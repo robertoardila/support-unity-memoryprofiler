@@ -1,0 +1,523 @@
+﻿using System.Collections.Generic;
+using System.ComponentModel;
+using System.Linq;
+using Assets.Editor.Treemap;
+using Treemap;
+using UnityEditor;
+using UnityEngine;
+using System;
+using System.Net;
+using NUnit.Framework.Constraints;
+using UnityEditor.MemoryProfiler;
+using Object = UnityEngine.Object;
+using System.IO;
+using MemoryProfilerWindow;
+using UnityEditor.MemoryProfiler2;
+using System.Collections;
+
+namespace UnityEditor.MemoryProfiler2
+{
+    public class ProfilerNodeView
+    {
+        public List<ProfilerNode> nodes = new List<ProfilerNode>();
+        private EditorWindow myParentWindow;
+        //Zoom and Pan Navigation vars
+        private const float kZoomMin = 0.1f;
+        private const float kZoomMax = 10.0f;
+        private float _zoom = 1.0f;
+        private Vector2 _zoomCoordsOrigin = Vector2.zero;
+        private float panX = 0;
+        private float panY = 0;
+        //Actual Focused Window
+        int _focusedWindowId = 0;
+        public static Texture2D Bgtexture;
+        public static Texture2D bgMemHeapDialog;
+        GUIStyle nodeStyle;
+        CrawledMemorySnapshot _unpackedCrawl;
+        GUIStyle memHeapStyle;
+        GUIStyle memHeapStyle2;
+        GUIStyle memHeapBarBGStyle;
+        GUIStyle memHeapStyleText;
+        GUIStyle memTitleStyleText;
+        GUIStyle tmpStyle;
+        MemoryHeapUsageComparer memComparer1;
+        ManageObjectComparer memComparer2;
+        bool bShowMemHeap = false;
+        float offsetDialogPosY = 0;
+        float tmpPosY = 0;
+
+        private List<MemoryHeapUsage> memUsageSectors = new List<MemoryHeapUsage>();
+        private List<int> memoryValues = new List<int>();
+        private List<string> memoryLabelValues = new List<string>();
+
+        static readonly string[] SizeSuffixes = { "bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
+
+        public ProfilerNodeView(EditorWindow window)
+        {
+            myParentWindow = window;
+            Bgtexture = Resources.Load("background") as Texture2D;
+            bgMemHeapDialog = Resources.Load("bgMenu") as Texture2D;
+            //memHeapStyle = new GUIStyle("flow node 5");
+
+            GUISkin skin = EditorGUIUtility.Load("DialogGUISkin.guiskin") as GUISkin;
+            memHeapStyle2 = new GUIStyle(skin.box);
+
+            GUISkin skin2 = EditorGUIUtility.Load("MemHeapGUISkin.guiskin") as GUISkin;
+            memHeapBarBGStyle = new GUIStyle(skin2.box);
+
+            GUISkin skin3 = EditorGUIUtility.Load("memSegmentGUISkin.guiskin") as GUISkin;
+            memHeapStyle = new GUIStyle(skin3.box);
+
+            GUISkin skin4 = EditorGUIUtility.Load("DialogGUISkin.guiskin") as GUISkin;
+            memTitleStyleText = new GUIStyle(skin4.label);
+
+            GUISkin skin5 = EditorGUIUtility.Load("MemHeapGUISkin.guiskin") as GUISkin;
+            memHeapStyleText = new GUIStyle(skin5.label);
+
+            memComparer1 = new MemoryHeapUsageComparer();
+            memComparer2 = new ManageObjectComparer();
+
+            memoryValues = new List<int>();
+            for(int i=0;i<5;i++)
+            {
+                memoryValues.Add(0);
+            }
+            memoryLabelValues = new List<string>();
+            memoryLabelValues.Add("  Total size of native objects found: ");
+            memoryLabelValues.Add("  Total size of managed objects found: ");
+            memoryLabelValues.Add("  Total size of gc handles found: ");
+            memoryLabelValues.Add("  Total size of static fields found: ");
+            memoryLabelValues.Add("  Total size of objects found: ");
+        }
+
+
+        static string SizeSuffix(Int64 value, int decimalPlaces = 1)
+        {
+            if (value < 0) { return "-" + SizeSuffix(-value); }
+
+            int i = 0;
+            decimal dValue = (decimal)value;
+            while (Math.Round(dValue, decimalPlaces) >= 1000)
+            {
+                dValue /= 1024;
+                i++;
+            }
+
+            return string.Format("{0:n" + decimalPlaces + "} {1}", dValue, SizeSuffixes[i]);
+        }
+
+        private Vector2 ConvertScreenCoordsToZoomCoords(Vector2 screenCoords, Rect rect)
+        {
+            return (screenCoords - rect.TopLeft()) / _zoom + _zoomCoordsOrigin;
+        }
+
+        private void HandleEvents(Rect rect)
+        {
+            // Allow adjusting the zoom with the mouse wheel as well. In this case, use the mouse coordinates
+            // as the zoom center instead of the top left corner of the zoom area. This is achieved by
+            // maintaining an origin that is used as offset when drawing any GUI elements in the zoom area.
+            if (Event.current.type == EventType.ScrollWheel)
+            {
+                Vector2 screenCoordsMousePos = Event.current.mousePosition;
+                Vector2 delta = Event.current.delta;
+                Vector2 zoomCoordsMousePos = ConvertScreenCoordsToZoomCoords(screenCoordsMousePos, rect);
+                float zoomDelta = -delta.y / 150.0f;
+                float oldZoom = _zoom;
+                _zoom += zoomDelta;
+                _zoom = Mathf.Clamp(_zoom, kZoomMin, kZoomMax);
+                _zoomCoordsOrigin += (zoomCoordsMousePos - _zoomCoordsOrigin) - (oldZoom / _zoom) * (zoomCoordsMousePos - _zoomCoordsOrigin);
+
+                Event.current.Use();
+            }
+
+            // Allow moving the zoom area's origin by dragging with the middle mouse button or dragging
+            // with the left mouse button with Alt pressed.
+            if (Event.current.type == EventType.MouseDrag &&
+                (Event.current.button == 0 && Event.current.modifiers == EventModifiers.Alt))
+            {
+                Vector2 delta = Event.current.delta;
+                delta /= _zoom;
+                _zoomCoordsOrigin += delta;
+
+                Event.current.Use();
+            }
+
+            if (Event.current.button == 1 && Event.current.type == EventType.MouseDown)
+            {
+                GenericMenu menu = new GenericMenu();
+                menu.AddItem(new GUIContent("Clear All"), false, ContextCallback, "deleteNode");
+                menu.ShowAsContext();
+                Event.current.Use();
+            }
+
+            
+
+            if (Event.current.button == 2 && Event.current.type == EventType.MouseDrag)
+            {
+                panX = Event.current.delta.x;
+                panY = Event.current.delta.y;
+                for (int i = 0; i < nodes.Count; i++)
+                {
+                    nodes[i].SetPannedRect(panX, panY);
+                }
+            }
+        }
+
+        public void ClearNodeView()
+        {
+            for(int i=0;i<nodes.Count;i++)
+            {
+                nodes[i] = null;
+            }
+            nodes.Clear();
+        }
+
+        public void DrawProfilerNodeView(Rect rect)
+        {
+            DrawBackground(rect);
+            HandleEvents(rect);
+            ProfilerNodeZoomArea.Begin(_zoom, rect, panX, panY);
+            DrawProfilerNodes();
+            ProfilerNodeZoomArea.End(panX, panY);
+            DrawTotalMemory(rect);
+            DrawHeapMemory(rect);
+        }
+
+        public void DrawBackground(Rect rect)
+        {
+             GUI.DrawTextureWithTexCoords(
+                new Rect(rect),
+                Bgtexture,
+             new Rect(0f, 0f, 20, 20));
+        }
+
+        public void DrawProfilerNodes()
+        {
+
+            myParentWindow.BeginWindows();
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                GUI.skin.window = nodes[i].nodeStyle;
+                
+                //nodes[i].SetPannedRect(panX,panY);
+                nodes[i].DrawCurves();
+                nodes[i].windowRect = GUI.Window(i, nodes[i].windowRect, DrawNodeWindow, nodes[i].nodeTitle);
+                
+            }
+            myParentWindow.EndWindows();
+        }
+
+        void DrawNodeWindow(int id)
+        {
+            GUI.SetNextControlName(id + "");
+            nodes[id].DrawNode();
+            GUI.DragWindow();
+            if (Event.current.GetTypeForControl(id) == EventType.Used)
+            {
+                for (int i = 0; i < nodes.Count; i++)
+                {
+                    nodes[i].bIsSelected = false;
+                }
+                _focusedWindowId = id;
+                nodes[id].bIsSelected = true;
+                
+            }
+
+        }
+
+        void ContextCallback(object obj)
+        {
+            string clb = obj.ToString();
+
+            if (clb.Equals("deleteNode"))
+            {
+                //ProfilerNode selNode = nodes[_focusedWindowId];
+                //nodes.RemoveAt(_focusedWindowId);
+                ClearNodeView();
+            }
+        }
+
+        public void DrawTotalMemory(Rect rect)
+        {
+            if (_unpackedCrawl != null)
+            {
+                Rect heapMemBorder = new Rect(rect.x, rect.y+(20), rect.width, 20);
+                //GUI.Box(heapMemBorder, GUIContent.none, memHeapStyle2);
+
+                for(int i=0;i<memoryValues.Count;i++)
+                {
+                    memoryValues[i] = 0;
+                    switch(i)
+                    {
+                        case 0:
+                            for (int j = 0; j < _unpackedCrawl.nativeObjects.Length; j++)
+                            {
+                                memoryValues[i] += _unpackedCrawl.nativeObjects[j].size;
+                            }
+                        break;
+                        case 1:
+                            for (int j = 0; j < _unpackedCrawl.managedObjects.Length; j++)
+                            {
+                                memoryValues[i] += _unpackedCrawl.managedObjects[j].size;
+                            }
+                        break;
+                        case 2:
+                            for (int j = 0; j < _unpackedCrawl.gcHandles.Length; j++)
+                            {
+                                memoryValues[i] += _unpackedCrawl.gcHandles[j].size;
+                            }
+                        break;
+                        case 3:
+                            for (int j = 0; j < _unpackedCrawl.staticFields.Length; j++)
+                            {
+                                memoryValues[i] += _unpackedCrawl.staticFields[j].size;
+                            }
+                        break;
+                        case 4:
+                            for (int j = 0; j < _unpackedCrawl.allObjects.Length; j++)
+                            {
+                                memoryValues[i] += _unpackedCrawl.allObjects[j].size;
+                            }
+                        break;
+                    }
+                    
+                    heapMemBorder = new Rect(rect.x, rect.y + (20 * i), rect.width, 20);
+                    if (i == 4)
+                    {
+                        GUI.Label(heapMemBorder, memoryLabelValues[i] + SizeSuffix(memoryValues[i]), memHeapStyleText);
+                    }
+                    else
+                    {
+                        GUI.Label(heapMemBorder, memoryLabelValues[i] + memoryValues[i]+" bytes.", memHeapStyleText);
+                    }
+                }
+            }
+        }
+
+        public void DrawHeapMemory(Rect rect)
+        {
+            memUsageSectors.Clear();
+            int i = 0;
+            int j = 0;
+            int sized = 0;
+            if (_unpackedCrawl != null)
+            {
+                //Debug.Log(" SIZE " + _unpackedCrawl.managedHeap.Length);
+                foreach (var segment in _unpackedCrawl.managedHeap)
+                {
+                    //Debug.Log(i + " test " + segment.startAddress + "  " + ((ulong)segment.bytes.Length));
+                    i++;
+                    MemoryHeapUsage memSector = new MemoryHeapUsage();
+                    memSector.section = segment;
+                    memUsageSectors.Add(memSector);
+                }
+
+                for (int k = 0; k < memUsageSectors.Count; k++)
+                {
+                    foreach (var manage in _unpackedCrawl.managedObjects)
+                    {
+                        if (manage.address >= memUsageSectors[k].section.startAddress && manage.address <= (memUsageSectors[k].section.startAddress + (ulong)memUsageSectors[k].section.bytes.Length))
+                        {
+                            memUsageSectors[k].sectors.Add(manage);
+                        }
+                    }
+                }
+
+                foreach (var manage in _unpackedCrawl.managedObjects)
+                {
+                    sized += manage.size;
+                    j++;
+                }
+
+
+                //Debug.Log("EL sized " + sized + "___" + j);
+                //Debug.Log("VM Granularity " + _unpackedCrawl.virtualMachineInformation.allocationGranularity);
+                memUsageSectors.Sort(memComparer1);
+                ulong heapSpace = ((memUsageSectors[memUsageSectors.Count-1].section.startAddress + (ulong)memUsageSectors[memUsageSectors.Count - 1].section.bytes.Length))- memUsageSectors[0].section.startAddress;
+                //Debug.Log("::::"+ memUsageSectors[0].section.bytes.Length);
+                //Debug.Log(" HEAPPP "+heapSpace+"__"+ memUsageSectors[0].section.startAddress + "__" + memUsageSectors[0].section.bytes.Length + "__"+ memUsageSectors[memUsageSectors.Count - 1].section.startAddress+"__"+ memUsageSectors[memUsageSectors.Count - 1].section.bytes.Length+"__"+rect.width);
+
+                Rect heapMemBorder = new Rect(rect.x, (rect.height - ((memUsageSectors.Count+1.0f) * 2) * 22)+ offsetDialogPosY, rect.width, rect.height);
+                GUI.Box(heapMemBorder, GUIContent.none, memHeapStyle2);
+                if (!bShowMemHeap)
+                {
+                    GUI.Label(heapMemBorder, "  Click to show Mono Heap", memTitleStyleText);
+                }
+                else
+                {
+                    GUI.Label(heapMemBorder, "  Mono Heap (Click to Hide)", memTitleStyleText);
+                }
+                for (int h = 0; h < memUsageSectors.Count; h++)
+                {
+                    tmpStyle = memHeapStyle;
+                    memUsageSectors[h].sectors.Sort(memComparer2);
+                    GUI.Box(new Rect(rect.x, (rect.height - (22 * ((memUsageSectors.Count) * 2 - h * 2)))+ offsetDialogPosY, rect.width, 20), GUIContent.none, memHeapBarBGStyle);
+                    for (int r = 0; r < memUsageSectors[h].sectors.Count; r++)
+                    {
+                        float zoomed = ((float)memUsageSectors[h].section.bytes.Length) / rect.width;                        
+                        Rect labelPos = new Rect(rect.x, (rect.height - (22 * ((memUsageSectors.Count+0.5f)*2 - h*2)))+offsetDialogPosY, rect.width, 30);
+                        GUI.Label(labelPos, "  Memory sector "+h+": " + memUsageSectors[h].section.startAddress + " size " + SizeSuffix(memUsageSectors[h].section.bytes.Length,2), memHeapStyleText);
+                        Rect position = new Rect(rect.x + ((memUsageSectors[h].sectors[r].address- memUsageSectors[h].section.startAddress)/zoomed), (rect.height - (22 *(memUsageSectors.Count*2-(h)*2)))+ offsetDialogPosY, memUsageSectors[h].sectors[r].size/ (int)zoomed, 20);
+                        GUI.Box(position, GUIContent.none, tmpStyle);
+                    }
+                }
+
+                if (heapMemBorder.Contains(Event.current.mousePosition))
+                {
+                    if (Event.current.type == EventType.MouseDown)
+                    {
+                        bShowMemHeap = !bShowMemHeap;
+                        
+                    }
+                }
+
+                if (!bShowMemHeap)
+                {
+                    if (((rect.height - ((memUsageSectors.Count + 1.0f) * 2) * 22) + offsetDialogPosY) <= rect.height - 20)
+                    {
+                        offsetDialogPosY += 20 * Time.deltaTime;
+                    }
+                }
+                else
+                {
+                    if (((rect.height - ((memUsageSectors.Count + 1.0f) * 2) * 22) + offsetDialogPosY) >= (rect.height - ((memUsageSectors.Count + 1.0f) * 2) * 22))
+                    {
+                        offsetDialogPosY -= 20 * Time.deltaTime;
+                    }
+                }
+            }
+        }
+
+        
+
+
+        public static void DrawNodeCurve(Rect start, Rect end, Color elColor)
+        {
+            Vector3 startPos = new Vector3(start.x + start.width, start.y + start.height / 2, 0);
+            Vector3 endPos = new Vector3(end.x + end.width / 2, end.y + end.height / 2, 0);
+            Vector3 startTan = startPos + Vector3.right * 256;
+            Vector3 endTan = endPos + Vector3.left * 256;
+
+            Handles.DrawBezier(startPos, endPos, startTan, endTan, elColor, null, 5);
+        }
+
+        public void CreateObjectInfoNode(ProfilerNode objectInfoNode,float nodeRefPosX=0, float nodeRefPosY = 0, bool bCreateInGrid=true)
+        {
+            if (nodes.Count > 0)
+            { 
+                float instancingPosX = nodes[nodes.Count - 1].windowRect.x;
+                float instancingPosY = nodes[nodes.Count - 1].windowRect.y;
+                if (bCreateInGrid)
+                {
+                    if (nodes.Count % 4 == 0)
+                    {
+                        instancingPosX = nodes[0].windowRect.x;
+                        instancingPosY = nodes[nodes.Count - 1].windowRect.y + 460;
+                    }
+                }
+                else
+                {
+                    instancingPosX = nodeRefPosX-60;
+                    instancingPosY = nodeRefPosY-100;
+                }
+                objectInfoNode.windowRect = new Rect(instancingPosX + 460, instancingPosY, 360, 360);
+                objectInfoNode.originalPosX = instancingPosX + 460;
+                objectInfoNode.originalPosY = instancingPosY;
+            }
+            else
+            {
+                objectInfoNode.windowRect = new Rect(460, 360, 360, 360);
+                objectInfoNode.originalPosX = 460;
+                objectInfoNode.originalPosY = 360;
+            }
+            nodes.Add(objectInfoNode);
+        }
+
+        public void SetSelectedNode(int id)
+        {
+            GUI.FocusControl(id + "");
+        }
+
+        public int FindExistingObjectByInstanceID(int id)
+        {
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                var nativeObject = nodes[i].myInfo.memObject as NativeUnityEngineObject;
+                if (nativeObject != null)
+                {
+                    if (nodes[i].instanceID == id)
+                    {
+                        return i;
+                    }
+                }
+            }
+            return -1;
+        }
+
+        public int FindExistingObjectByAddress(UInt64 id)
+        {
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                var manageObject = nodes[i].myInfo.memObject as ManagedObject;
+                if (manageObject != null)
+                {
+                    if (manageObject.address == id)
+                    {
+                        return i;
+                    }
+                }
+            }
+            return -1;
+        }
+
+        public void CreateNode(ThingInMemory memData, CrawledMemorySnapshot unpackedCrawl)
+        {
+            if (_unpackedCrawl == null)
+            {
+                _unpackedCrawl = unpackedCrawl;
+            }
+            ProfilerNodeObjectInfo info = new ProfilerNodeObjectInfo();
+            info.memObject = memData;
+            ProfilerNode objectInfoNode = new ProfilerNode(info, _unpackedCrawl, this, true, null);
+            CreateObjectInfoNode(objectInfoNode); 
+        }
+    }
+}
+
+public class MemoryHeapUsage
+{
+    public MemorySection section;
+    public List<ManagedObject> sectors = new List<ManagedObject>();
+}
+
+public class MemoryHeapUsageComparer : IComparer<MemoryHeapUsage>
+{
+    public int Compare(MemoryHeapUsage x, MemoryHeapUsage y)
+    {
+        if(x.section.startAddress > y.section.startAddress)
+        {
+            return 1;
+        }
+        if (x.section.startAddress < y.section.startAddress)
+        {
+            return -1;
+        }
+        return 0;
+    }
+}
+
+public class ManageObjectComparer : IComparer<ManagedObject>
+{
+    public int Compare(ManagedObject x, ManagedObject y)
+    {
+        if (x.address > y.address)
+        {
+            return 1;
+        }
+        if (x.address < y.address)
+        {
+            return -1;
+        }
+        return 0;
+    }
+}
