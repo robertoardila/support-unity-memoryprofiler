@@ -209,11 +209,11 @@ namespace UnityEditor.MemoryProfiler2
             Color elementColor;
             if (bIsReferences == 1)
             {
-                elementColor = new Color(1, 0.6f, 0);
+                elementColor = Color.white;
             }
             else if (bIsReferences == 2)
             {
-                elementColor = new Color(0.39f, 0.6f, 1);
+                elementColor = new Color(0.8039f, 0.8627f, 0.2235f);
             }
             else
             {
@@ -319,14 +319,14 @@ namespace UnityEditor.MemoryProfiler2
         {
             if (rb == null)
                 return Color.gray;
-            if (rb is NativeUnityEngineObject)
-                return Color.red;
-            if (rb is ManagedObject)
-                return Color.Lerp(Color.blue, Color.white, 0.5f);
+            if (rb is NativeUnityEngineObject)                  //Red
+                return new Color(0.9568f, 0.2627f, 0.2117f);
+            if (rb is ManagedObject)                            //Blue
+                return new Color(0.1294f, 0.5882f, 0.9529f);    
             if (rb is GCHandle)
-                return Color.magenta;
-            if (rb is StaticFields)
-                return Color.yellow;
+                return new Color(0.5411f, 0.7607f, 0.2862f);   //Green
+            if (rb is StaticFields)                             
+                return new Color(1, 0.9215f, 0.2313f);         //Yellow
 
             throw new ArgumentException("Unexpected type: " + rb.GetType());
         }

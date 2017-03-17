@@ -1,0 +1,5 @@
+/Library
+/*.collabignore
+/.vs/support-unity-memoryprofiler/v14/*.suo
+/*.csproj
+/*.sln

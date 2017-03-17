@@ -45,6 +45,7 @@ namespace UnityEditor.MemoryProfiler2
         bool bShowMemHeap = false;
         float offsetDialogPosY = 0;
         float tmpPosY = 0;
+        GUIStyle colorHelpStyle = new GUIStyle();
 
         private List<MemoryHeapUsage> memUsageSectors = new List<MemoryHeapUsage>();
         private List<int> memoryValues = new List<int>();
@@ -88,6 +89,42 @@ namespace UnityEditor.MemoryProfiler2
             memoryLabelValues.Add("  Total size of gc handles found: ");
             memoryLabelValues.Add("  Total size of static fields found: ");
             memoryLabelValues.Add("  Total size of objects found: ");
+    }
+
+        public void DrawColorHelp(Rect rect)
+        {
+            if (_unpackedCrawl != null)
+            {
+                /*Rect heapMemBorder = new Rect(rect.x + rect.width - 130, rect.y + (10), 150, 20);
+                colorHelpStyle.normal.textColor = Color.white;
+                GUI.Box(new Rect(rect.width, rect.y + (20), 20, 20), GUIContent.none, colorHelpStyle);
+                GUI.Label(heapMemBorder, " Color Help: ", colorHelpStyle);*/
+
+                Rect heapMemBorder = new Rect(rect.x + rect.width - 130, rect.y + (5), 150, 20);
+                colorHelpStyle.normal.textColor = Color.white;
+                GUI.Box(new Rect(rect.width, rect.y + (20), 20, 20), GUIContent.none, colorHelpStyle);
+                GUI.Label(heapMemBorder, " References. ", colorHelpStyle);
+
+                heapMemBorder = new Rect(rect.x + rect.width - 130, rect.y + (25), 150, 20);
+                colorHelpStyle.normal.textColor = new Color(0, 0.7372f, 0.8313f);
+                GUI.Label(heapMemBorder, " Referenced By. ", colorHelpStyle);
+
+                heapMemBorder = new Rect(rect.x + rect.width - 130, rect.y + (45), 150, 20);
+                colorHelpStyle.normal.textColor = new Color(0.9568f, 0.2627f, 0.2117f);
+                GUI.Label(heapMemBorder, " Native Objects. ", colorHelpStyle);
+
+                heapMemBorder = new Rect(rect.x + rect.width - 130, rect.y + (65), 150, 20);
+                colorHelpStyle.normal.textColor = new Color(0.1294f, 0.5882f, 0.9529f);
+                GUI.Label(heapMemBorder, " Managed Objects. ", colorHelpStyle);
+
+                heapMemBorder = new Rect(rect.x + rect.width - 130, rect.y + (85), 150, 20);
+                colorHelpStyle.normal.textColor = new Color(0.5411f, 0.7607f, 0.2862f);
+                GUI.Label(heapMemBorder, " GC Handles. ", colorHelpStyle);
+
+                heapMemBorder = new Rect(rect.x + rect.width - 130, rect.y + (105), 150, 20);
+                colorHelpStyle.normal.textColor = new Color(1, 0.9215f, 0.2313f);
+                GUI.Label(heapMemBorder, " Static Fields. ", colorHelpStyle);
+            }
         }
 
 
@@ -181,6 +218,7 @@ namespace UnityEditor.MemoryProfiler2
             ProfilerNodeZoomArea.End(panX, panY);
             DrawTotalMemory(rect);
             DrawHeapMemory(rect);
+            DrawColorHelp(rect);
         }
 
         public void DrawBackground(Rect rect)

@@ -49,7 +49,7 @@ namespace UnityEditor.MemoryProfiler2
 
         public static Rect Begin(float zoomScale, Rect screenCoordsArea, float panX, float panY)
         {
-            GUI.EndGroup();        // End the group Unity begins automatically for an EditorWindow to clip out the window tab. This allows us to draw outside of the size of the EditorWindow.
+            GUI.EndGroup();        
 
             Rect clippedArea = screenCoordsArea.ScaleSizeBy(1.0f / zoomScale*2, screenCoordsArea.TopLeft());
             clippedArea.y += kEditorWindowTabHeight;

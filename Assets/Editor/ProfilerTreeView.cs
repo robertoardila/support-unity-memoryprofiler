@@ -299,7 +299,7 @@ namespace UnityEditor.MemoryProfiler2
 				},
 				new MultiColumnHeaderState.Column 
 				{
-					headerContent = new GUIContent("Size (MB)", "The size in MB in memory."),
+					headerContent = new GUIContent("Size (bytes)", "The size in bytes in memory."),
 					headerTextAlignment = TextAlignment.Center,
 					sortedAscending = true,
 					sortingArrowAlignment = TextAlignment.Left,
