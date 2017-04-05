@@ -1,3 +1,4 @@
+#if UNITY_5_6
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -315,3 +316,4 @@ namespace UnityEditor.TreeViewExamples
 		}
 	}
 }
+#endif

@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using UnityEditor.Callbacks;
+#if UNITY_5_6
 using UnityEditor.IMGUI.Controls;
+#endif
 using UnityEngine;
 using UnityEditor.TreeViewExamples;
 using UnityEditor.MemoryProfiler;
@@ -10,37 +12,52 @@ using MemoryProfilerWindow;
 namespace UnityEditor.MemoryProfiler2
 {
 
-	class ProfilerWindow : EditorWindow
-	{
-		[NonSerialized] bool m_Initialized;
-		[SerializeField] TreeViewState m_TreeViewState; // Serialized in the window layout file so it survives assembly reloading
-		[SerializeField] MultiColumnHeaderState m_MultiColumnHeaderState;
-		ProfilerTreeView m_TreeView;
-		TreeModel<MemoryElement> m_TreeModel;
-		string m_Status = "Profiling";
-		//MyTreeAsset m_MyTreeAsset;
+    class ProfilerWindow : EditorWindow
+    {
+        [NonSerialized]
+        bool m_Initialized;
+#if UNITY_5_6
+        [SerializeField]
+        TreeViewState m_TreeViewState; // Serialized in the window layout file so it survives assembly reloading
+        [SerializeField]
+        MultiColumnHeaderState m_MultiColumnHeaderState;
+        ProfilerTreeView m_TreeView;
+        TreeModel<MemoryElement> m_TreeModel;
+#endif
+        string m_Status = "Profiling";
+        //MyTreeAsset m_MyTreeAsset;
 
-		[NonSerialized]
-		UnityEditor.MemoryProfiler.PackedMemorySnapshot _snapshot;
-		[SerializeField]
-		PackedCrawlerData _packedCrawled;
-		[NonSerialized]
-		CrawledMemorySnapshot _unpackedCrawl;
+        [NonSerialized]
+        UnityEditor.MemoryProfiler.PackedMemorySnapshot _snapshot;
+        [SerializeField]
+        PackedCrawlerData _packedCrawled;
+        [NonSerialized]
+        CrawledMemorySnapshot _unpackedCrawl;
         [NonSerialized]
         private ProfilerNodeView m_nodeView;
 
         [MenuItem("VMemory Tools/Profiler")]
-		public static ProfilerWindow GetWindow ()
-		{
-			var window = GetWindow<ProfilerWindow>();
-			window.titleContent = new GUIContent("Profiler");
-			window.Focus();
-			window.Repaint();
-			return window;
-		}
-        
+        public static ProfilerWindow GetWindow()
+        {
+            var window = GetWindow<ProfilerWindow>();
+            window.titleContent = new GUIContent("Profiler");
+            window.Focus();
+            window.Repaint();
+            return window;
+        }
 
-		/*[OnOpenAsset]
+        public enum FilterType
+        {
+            Mesh,
+            Texture,
+            All,
+            None
+        }
+        private FilterType actualInputType = FilterType.Mesh;
+        private FilterType oldInputType = FilterType.None;
+        private Vector2 scrollViewVector = Vector2.zero;
+
+        /*[OnOpenAsset]
 		public static bool OnOpenAsset (int instanceID, int line)
 		{
 			var myTreeAsset = EditorUtility.InstanceIDToObject (instanceID) as MyTreeAsset;
@@ -53,13 +70,13 @@ namespace UnityEditor.MemoryProfiler2
 			return false; // we did not handle the open
 		}*/
 
-		/*void SetTreeAsset (MyTreeAsset myTreeAsset)
+        /*void SetTreeAsset (MyTreeAsset myTreeAsset)
 		{
 			m_MyTreeAsset = myTreeAsset;
 			m_Initialized = false;
 		}*/
 
-		Rect topToolbarRect
+        Rect topToolbarRect
 		{
 			get { return new Rect (10f, 0f, position.width * .4f, 20f); }
 		}
@@ -83,19 +100,19 @@ namespace UnityEditor.MemoryProfiler2
 		{
 			get { return new Rect(10f, position.height - 20f, position.width * .4f, 16f); }
 		}
-
+#if UNITY_5_6
 		public ProfilerTreeView treeView
 		{
 			get { return m_TreeView; }
 		}
-
+#endif
 		void InitIfNeeded ()
 		{
 			if (!m_Initialized)
 			{
                 //Init the Node View
                 m_nodeView = new ProfilerNodeView(this);
-
+#if UNITY_5_6
                 // Check if it already exists (deserialized from window layout file or scriptable object)
                 if (m_TreeViewState == null)
 					m_TreeViewState = new TreeViewState();
@@ -109,7 +126,7 @@ namespace UnityEditor.MemoryProfiler2
 				m_TreeModel = new TreeModel<MemoryElement>(GetData());
 				m_TreeView = new ProfilerTreeView(m_TreeViewState, multiColumnHeader, m_TreeModel);
 				m_TreeView.doubleClickedCallback += OnDoubleClickCell;
-
+#endif
 				// Register the callback for snapshots.
 				UnityEditor.MemoryProfiler.MemorySnapshot.OnSnapshotReceived += IncomingSnapshot;
 
@@ -120,6 +137,7 @@ namespace UnityEditor.MemoryProfiler2
 			}
 		}
 
+#if UNITY_5_6
 		private void OnDoubleClickCell ( int id )
 		{
 			Debug.Log ("ON CLICK CELL " + m_TreeView.GetSelection()[0]);
@@ -127,15 +145,18 @@ namespace UnityEditor.MemoryProfiler2
 			Debug.Log ("ME: " + tmp.name);
             m_nodeView.CreateNode(tmp.memData,_unpackedCrawl);
 		}
-
-		void Unpack()
+#endif
+        void Unpack()
 		{
 			_unpackedCrawl = CrawlDataUnpacker.Unpack(_packedCrawled);
 			m_Status = "Loading snapshot in Grid .....";
-
-			m_TreeModel.SetData ( populateData ( _unpackedCrawl.allObjects.Length ) );
+#if UNITY_5_6
+            m_TreeModel.SetData ( populateData ( _unpackedCrawl.allObjects.Length ) );
 			m_TreeView.Reload ();
-			m_Status = "Snapshot Loaded!";
+#else
+
+#endif
+            m_Status = "Snapshot Loaded!";
 		}
 
 		private IList<MemoryElement> populateData (int numTotalElements)
@@ -195,13 +216,40 @@ namespace UnityEditor.MemoryProfiler2
 			InitIfNeeded();
             DoCanvasView(canvasRect);
             TopToolBar (topToolbarRect);
-			SearchBar (searchBarRect);
-			DoTreeView (multiColumnTreeViewRect);
-			
-			BottomToolBar (bottomToolbarRect);
-		}
+#if UNITY_5_6
+            SearchBar (searchBarRect);
+            DoTreeView (multiColumnTreeViewRect);
+            BottomToolBar (bottomToolbarRect);
+#else
+            DoLegacyTreeView(multiColumnTreeViewRect);
+#endif
+        }
 
-		void SearchBar (Rect rect)
+        void DoLegacyTreeView(Rect rect)
+        {
+            //Event e = Event.current;
+            //EditorGUILayout.BeginVertical();
+            //actualInputType = (FilterType)EditorGUILayout.EnumPopup("Select filter type: ", actualInputType);
+
+            //if (actualInputType != oldInputType)
+            //{
+            //    FilterList(actualInputType);
+            //}
+            //scrollViewVector = GUI.BeginScrollView(new Rect(5, 50, 225, 500), scrollViewVector, new Rect(0, 40, 225, 18 * filteredList.Count));
+            //for (int i = 0; i < filteredList.Count; i++)
+            //{
+            //    EditorGUILayout.LabelField(filteredList[i].text);
+            //    if (e.type == EventType.Repaint)
+            //    {
+            //        filteredList[i].myAreaRect = GUILayoutUtility.GetLastRect();
+            //    }
+            //}
+            //EditorGUILayout.EndVertical();
+            //oldInputType = actualInputType;
+            //GUI.EndScrollView();
+        }
+#if UNITY_5_6
+        void SearchBar (Rect rect)
 		{
 			treeView.searchString = SearchField.OnGUI(rect, treeView.searchString);
 		}
@@ -210,7 +258,7 @@ namespace UnityEditor.MemoryProfiler2
 		{
 			m_TreeView.OnGUI(rect);
 		}
-
+#endif
 		void DoCanvasView ( Rect rect )
 		{
             m_nodeView.DrawProfilerNodeView(rect);

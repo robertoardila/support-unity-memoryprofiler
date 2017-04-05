@@ -98,6 +98,7 @@ namespace MemoryProfilerWindow
 
         static NativeUnityEngineObject UnpackNativeUnityEngineObject(PackedMemorySnapshot packedSnapshot, PackedNativeUnityEngineObject packedNativeUnityEngineObject)
         {
+#if UNITY_4_5_OR_NEWER
             var className = packedSnapshot.nativeTypes[packedNativeUnityEngineObject.nativeTypeArrayIndex].name;
 
             return new NativeUnityEngineObject()
@@ -114,6 +115,24 @@ namespace MemoryProfilerWindow
                        hideFlags = packedNativeUnityEngineObject.hideFlags,
 					   type = "NativeUnityEngineObject"
                    };
+#else
+            var className = packedSnapshot.nativeTypes[packedNativeUnityEngineObject.classId].name;
+
+            return new NativeUnityEngineObject()
+            {
+                instanceID = packedNativeUnityEngineObject.instanceId,
+                classID = packedNativeUnityEngineObject.classId,
+                className = className,
+                name = packedNativeUnityEngineObject.name,
+                caption = packedNativeUnityEngineObject.name + "(" + className + ")",
+                size = packedNativeUnityEngineObject.size,
+                isPersistent = packedNativeUnityEngineObject.isPersistent,
+                isDontDestroyOnLoad = packedNativeUnityEngineObject.isDontDestroyOnLoad,
+                isManager = packedNativeUnityEngineObject.isManager,
+                hideFlags = packedNativeUnityEngineObject.hideFlags,
+                type = "NativeUnityEngineObject"
+            };
+#endif
         }
     }
 

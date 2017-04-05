@@ -1,3 +1,4 @@
+#if UNITY_5_6
 using UnityEngine;
 using UnityEditor.IMGUI.Controls;
 
@@ -62,3 +63,4 @@ namespace UnityEditor.TreeViewExamples
 		}
 	}
 }
+#endif

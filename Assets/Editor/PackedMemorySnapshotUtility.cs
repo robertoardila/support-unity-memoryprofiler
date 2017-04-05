@@ -19,13 +19,21 @@ public static class PackedMemorySnapshotUtility
         // Saving snapshots using JsonUtility, instead of BinaryFormatter, is significantly faster.
         // I cancelled saving a memory snapshot that is saving using BinaryFormatter after 24 hours.
         // Saving the same memory snapshot using JsonUtility.ToJson took 20 seconds only.
-
+#if UNITY_5_OR_NEWER
         UnityEngine.Profiling.Profiler.BeginSample("PackedMemorySnapshotUtility.SaveToFile");
 
         var json = JsonUtility.ToJson(snapshot);
         File.WriteAllText(filePath, json);
 
         UnityEngine.Profiling.Profiler.EndSample();
+#else
+        Profiler.BeginSample("PackedMemorySnapshotUtility.SaveToFile");
+
+        var json = JsonUtility.ToJson(snapshot);
+        File.WriteAllText(filePath, json);
+
+        Profiler.EndSample();
+#endif
     }
 
     public static PackedMemorySnapshot LoadFromFile()
@@ -39,6 +47,7 @@ public static class PackedMemorySnapshotUtility
 
     static PackedMemorySnapshot LoadFromFile(string filePath)
     {
+#if UNITY_5_OR_NEWER
         PackedMemorySnapshot result = null;
         string fileExtension = Path.GetExtension(filePath);
 
@@ -69,6 +78,38 @@ public static class PackedMemorySnapshotUtility
         }
 
         return result;
+#else
+        PackedMemorySnapshot result = null;
+        string fileExtension = Path.GetExtension(filePath);
+
+        if (string.Equals(fileExtension, ".memsnap2", System.StringComparison.OrdinalIgnoreCase))
+        {
+            Profiler.BeginSample("PackedMemorySnapshotUtility.LoadFromFile(json)");
+
+            var json = File.ReadAllText(filePath);
+            result = JsonUtility.FromJson<PackedMemorySnapshot>(json);
+
+            Profiler.EndSample();
+        }
+        else if (string.Equals(fileExtension, ".memsnap", System.StringComparison.OrdinalIgnoreCase))
+        {
+            Profiler.BeginSample("PackedMemorySnapshotUtility.LoadFromFile(binary)");
+
+            var binaryFormatter = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
+            using (Stream stream = File.Open(filePath, FileMode.Open))
+            {
+                result = binaryFormatter.Deserialize(stream) as PackedMemorySnapshot;
+            }
+
+            Profiler.EndSample();
+        }
+        else
+        {
+            Debug.LogErrorFormat("MemoryProfiler: Unrecognized memory snapshot format '{0}'.", filePath);
+        }
+
+        return result;
+#endif
     }
 }
 

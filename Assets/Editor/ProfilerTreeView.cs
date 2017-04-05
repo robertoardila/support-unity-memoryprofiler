@@ -1,4 +1,5 @@
-﻿using System;
+﻿#if UNITY_5_6
+using System;
 using System.Collections.Generic;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
@@ -337,3 +338,4 @@ namespace UnityEditor.MemoryProfiler2
 		}
 	}
 }
+#endif

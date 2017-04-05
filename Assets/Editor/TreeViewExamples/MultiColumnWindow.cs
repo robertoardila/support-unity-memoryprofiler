@@ -1,3 +1,4 @@
+#if UNITY_5_6
 using System;
 using System.Collections.Generic;
 using UnityEditor.Callbacks;
@@ -278,3 +279,4 @@ namespace UnityEditor.TreeViewExamples
 	}
 
 }
+#endif

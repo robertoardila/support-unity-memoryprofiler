@@ -68,7 +68,7 @@ namespace Treemap
 
         public string GetLabel()
         {
-            string row1 = _name;
+            string row1 = string.Format("{0} ({1})", _name, _items != null ? _items.Count : 0);
             string row2 = EditorUtility.FormatBytes((long)totalMemorySize);
             return row1 + "\n" + row2;
         }
