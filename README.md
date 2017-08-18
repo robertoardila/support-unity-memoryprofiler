@@ -1,4 +1,4 @@
-# Support-Unity Memory Profiler Extension
+# Unity Support Colombia: Memory Profiler Extension
 Extension for the existing Unity memory profiler project, this is a WIP project made by the Unity Support Team in Colombia, which uses as a base the Memory Profiler project found in https://bitbucket.org/Unity-Technologies/memoryprofiler and uses the new memory profiler API introduced in Unity5.3a4, adding filters and search options with a node viewer for the objects and their references.
 
 * Requires Unity 5.6 or newer in order to use the filters and table views
