@@ -26,6 +26,7 @@ namespace UnityEditor.MemoryProfiler2
 #endif
         string m_Status = "Profiling";
         bool bCheckHeapOnly = false;
+        bool bshowPlainData = false;
         //MyTreeAsset m_MyTreeAsset;
 
         [NonSerialized]
@@ -171,6 +172,8 @@ namespace UnityEditor.MemoryProfiler2
             }
             else
             {
+                Array.Sort(_unpackedCrawl.nativeObjects, new NativeUnityEngineObjectComparer());
+                Array.Sort(_unpackedCrawl.managedObjects, new ManagedObjectComparer());
                 m_nodeView.bShowMemHeap = false;
 #if UNITY_5_6_OR_NEWER
                 m_TreeModel.SetData ( populateData ( _unpackedCrawl.allObjects.Length ) );
@@ -263,9 +266,17 @@ namespace UnityEditor.MemoryProfiler2
             }
             else
             {
-                DoCanvasView(fullCanvasRect);
+                if (bshowPlainData)
+                {
+                    DrawPlainData();
+                }
+                else
+                {
+                    DoCanvasView(fullCanvasRect);
+                }
             }
             TopToolBar (topToolbarRect);
+           
 #if UNITY_5_6_OR_NEWER
             if (!bCheckHeapOnly)
             {
@@ -348,37 +359,48 @@ namespace UnityEditor.MemoryProfiler2
                         m_Status = "Saving snapshot.....";
                         PackedMemorySnapshotUtility.SaveToFile(_snapshot);
                     }
+
                 }
-#if UNITY_5_6_OR_NEWER
+
                 if (_unpackedCrawl != null)
                 {
+#if UNITY_5_6_OR_NEWER
+                    //if (bCheckHeapOnly)
+                    //{
 
-                    if (bCheckHeapOnly)
-                    {
                         if (GUILayout.Button("Show Tree/Node View", style))
                         {
                             bCheckHeapOnly = false;
                             m_nodeView.bShowMemHeap = false;
                             m_nodeView.ClearNodeView();
                             m_TreeView.Reload();
-                        
                         }
-                    }
-                    else
 
+                    //}
+                    //else
                     {
+#endif
                         if (GUILayout.Button("Show Heap Usage", style))
                         {
                             bCheckHeapOnly = true;
+                            bshowPlainData = false;
                             m_nodeView.ClearNodeView();
                             m_nodeView.CreateTreelessView(_unpackedCrawl);
                         }
-                    }
-                }
-#endif
-            }
 
-            GUILayout.EndArea();
+                        if (GUILayout.Button("Show Plain Data", style))
+                        {
+                            bCheckHeapOnly = true;
+                            bshowPlainData = true;
+                        }
+#if UNITY_5_6_OR_NEWER
+                    }
+#endif
+                }
+
+              }
+
+                    GUILayout.EndArea();
 		}
 
 		void BottomToolBar (Rect rect)
@@ -389,11 +411,82 @@ namespace UnityEditor.MemoryProfiler2
 				GUILayout.Label (m_Status);
 			}
 			GUILayout.EndArea();
-		}
+        }
+
+        public void DrawPlainData()
+        {
+            if (_unpackedCrawl != null)
+            {
+                GUILayout.Label(" ");
+                if (GUILayout.Button("Save full list of elements data to an external .txt file"))
+                {
+                    string exportPath = EditorUtility.SaveFilePanel("Save Snapshot Info", Application.dataPath, "SnapshotExport.txt", "txt");
+                    if (!String.IsNullOrEmpty(exportPath))
+                    {
+                        System.IO.StreamWriter sw = new System.IO.StreamWriter(exportPath);
+                        sw.WriteLine("Managed Objects");
+                        for (int i = 0; i < _unpackedCrawl.managedObjects.Length; i++)
+                        {
+                            ManagedObject managedObject = _unpackedCrawl.managedObjects[i];
+                            sw.WriteLine("Address: " + managedObject.address + ", Caption: " + managedObject.caption + ", Size: " + managedObject.size);
+                        }
+                        sw.WriteLine("Native Objects");
+                        for (int i = 0; i < _unpackedCrawl.nativeObjects.Length; i++)
+                        {
+                            NativeUnityEngineObject nativeObject = _unpackedCrawl.nativeObjects[i];
+                            sw.WriteLine("InstanceID: " + nativeObject.instanceID + ", Name: " + nativeObject.name + ", Size: " + nativeObject.size);
+                        }
+                        sw.Flush();
+                        sw.Close();
+                    }
+                }
+                GUILayout.Label(" ");
+                GUILayout.Label("Managed Objects - First 10 Elements: ");
+                GUILayout.Label(" ");
+                for (int i = 0; i < _unpackedCrawl.managedObjects.Length && i < 10; i++)
+                {
+                    ManagedObject managedObject = _unpackedCrawl.managedObjects[i];
+                    GUILayout.Label("Address: " + managedObject.address + ", Caption: " + managedObject.caption + ", Size: " + managedObject.size);
+                }
+                GUILayout.Label(" ");
+                GUILayout.Label("Native Objects - First 10 Elements:");
+                GUILayout.Label(" ");
+                for (int i = 0; i < _unpackedCrawl.nativeObjects.Length && i < 10; i++)
+                {
+                    NativeUnityEngineObject nativeObject = _unpackedCrawl.nativeObjects[i];
+                    GUILayout.Label("InstanceID: " + nativeObject.instanceID + ", Name: " + nativeObject.name + ", Size: " + nativeObject.size);
+                }
+            }
+        }
+
 	}
 
 
-	internal static class SearchField
+    public class NativeUnityEngineObjectComparer : System.Collections.Generic.IComparer<NativeUnityEngineObject>
+    {
+        public int Compare(NativeUnityEngineObject x, NativeUnityEngineObject y)
+        {
+            if (x.instanceID < y.instanceID) return -1;
+            if (x.instanceID > y.instanceID) return 1;
+            if (x.instanceID == y.instanceID) return 0;
+
+            return 0;
+        }
+    }
+
+    public class ManagedObjectComparer : System.Collections.Generic.IComparer<ManagedObject>
+    {
+        public int Compare(ManagedObject x, ManagedObject y)
+        {
+            if (x.address < y.address) return -1;
+            if (x.address > y.address) return 1;
+            if (x.address == y.address) return 0;
+
+            return 0;
+        }
+    }
+
+internal static class SearchField
 	{
 		static class Styles
 		{
