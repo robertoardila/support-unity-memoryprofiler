@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using UnityEditor.Callbacks;
-#if UNITY_5_6
+#if UNITY_5_6_OR_NEWER
 using UnityEditor.IMGUI.Controls;
 #endif
 using UnityEngine;
@@ -16,7 +16,7 @@ namespace UnityEditor.MemoryProfiler2
     {
         [NonSerialized]
         bool m_Initialized;
-#if UNITY_5_6
+#if UNITY_5_6_OR_NEWER
         [SerializeField]
         TreeViewState m_TreeViewState; // Serialized in the window layout file so it survives assembly reloading
         [SerializeField]
@@ -25,6 +25,7 @@ namespace UnityEditor.MemoryProfiler2
         TreeModel<MemoryElement> m_TreeModel;
 #endif
         string m_Status = "Profiling";
+        bool bCheckHeapOnly = false;
         //MyTreeAsset m_MyTreeAsset;
 
         [NonSerialized]
@@ -45,6 +46,8 @@ namespace UnityEditor.MemoryProfiler2
             window.Repaint();
             return window;
         }
+
+        
 
         public enum FilterType
         {
@@ -96,23 +99,28 @@ namespace UnityEditor.MemoryProfiler2
 			get { return new Rect(.4f * position.width + 10f, 0f, position.width * .6f, position.height); }
 		}
 
-		Rect bottomToolbarRect
+        public Rect fullCanvasRect
+        {
+            get { return new Rect(0, 20f, position.width, position.height-20f); }
+        }
+
+        Rect bottomToolbarRect
 		{
 			get { return new Rect(10f, position.height - 20f, position.width * .4f, 16f); }
 		}
-#if UNITY_5_6
+#if UNITY_5_6_OR_NEWER
 		public ProfilerTreeView treeView
 		{
 			get { return m_TreeView; }
 		}
 #endif
-		void InitIfNeeded ()
+        void InitIfNeeded ()
 		{
 			if (!m_Initialized)
 			{
                 //Init the Node View
                 m_nodeView = new ProfilerNodeView(this);
-#if UNITY_5_6
+#if UNITY_5_6_OR_NEWER
                 // Check if it already exists (deserialized from window layout file or scriptable object)
                 if (m_TreeViewState == null)
 					m_TreeViewState = new TreeViewState();
@@ -137,27 +145,43 @@ namespace UnityEditor.MemoryProfiler2
 			}
 		}
 
-#if UNITY_5_6
+#if UNITY_5_6_OR_NEWER
 		private void OnDoubleClickCell ( int id )
 		{
-			Debug.Log ("ON CLICK CELL " + m_TreeView.GetSelection()[0]);
-			MemoryElement tmp = m_TreeModel.Find (id);
-			Debug.Log ("ME: " + tmp.name);
-            m_nodeView.CreateNode(tmp.memData,_unpackedCrawl);
+            if (m_TreeView.GetSelection().Count > 0)
+            {
+                Debug.Log("ON CLICK CELL " + m_TreeView.GetSelection()[0]);
+                MemoryElement tmp = m_TreeModel.Find(id);
+                Debug.Log("ME: " + tmp.name);
+                m_nodeView.CreateNode(tmp.memData, _unpackedCrawl);
+            }
 		}
 #endif
         void Unpack()
 		{
 			_unpackedCrawl = CrawlDataUnpacker.Unpack(_packedCrawled);
 			m_Status = "Loading snapshot in Grid .....";
-#if UNITY_5_6
-            m_TreeModel.SetData ( populateData ( _unpackedCrawl.allObjects.Length ) );
-			m_TreeView.Reload ();
-#else
-
+#if !UNITY_5_6_OR_NEWER
+            m_nodeView.ClearNodeView();
+            bCheckHeapOnly = true;
 #endif
+            if (bCheckHeapOnly)
+            {
+                m_nodeView.CreateTreelessView(_unpackedCrawl);
+            }
+            else
+            {
+                m_nodeView.bShowMemHeap = false;
+#if UNITY_5_6_OR_NEWER
+                m_TreeModel.SetData ( populateData ( _unpackedCrawl.allObjects.Length ) );
+			    m_TreeView.Reload ();
+#endif
+            }
+            //Debug.Log("Snapshot Loaded! " + _unpackedCrawl);
             m_Status = "Snapshot Loaded!";
-		}
+
+            
+        }
 
 		private IList<MemoryElement> populateData (int numTotalElements)
 		{
@@ -172,7 +196,26 @@ namespace UnityEditor.MemoryProfiler2
 
 			for (int i = 0; i < numTotalElements; ++i)
 			{
-				root = new MemoryElement(tmp[i].caption, 0, tmp[i].instanceID, tmp[i].className, tmp[i].type, tmp[i].size);
+                if (tmp[i] is NativeUnityEngineObject)
+                {
+                    NativeUnityEngineObject nuo = tmp[i] as NativeUnityEngineObject;
+                    root = new MemoryElement(nuo.caption, 0, nuo.instanceID, nuo.className, "Native", tmp[i].size);
+                }
+                else if(tmp[i] is ManagedObject)
+                {
+                    ManagedObject mo = tmp[i] as ManagedObject;
+                    root = new MemoryElement(mo.caption, 0, 0, "Managed", "Managed", mo.size);
+                }
+                else if (tmp[i] is GCHandle)
+                {
+                    GCHandle gch = tmp[i] as GCHandle;
+                    root = new MemoryElement(gch.caption, 0, 0, "GC Handle", "GC Handle", gch.size);
+                }
+                else if (tmp[i] is StaticFields)
+                {
+                    StaticFields sf = tmp[i] as StaticFields;
+                    root = new MemoryElement(sf.caption, 0, 0, "GC Handle", sf.typeDescription.name, sf.size);
+                }
                 root.memData = tmp[i];
 				treeElements.Add(root);
 			}
@@ -214,12 +257,22 @@ namespace UnityEditor.MemoryProfiler2
 		void OnGUI ()
 		{
 			InitIfNeeded();
-            DoCanvasView(canvasRect);
+            if (!bCheckHeapOnly)
+            {
+                DoCanvasView(canvasRect);
+            }
+            else
+            {
+                DoCanvasView(fullCanvasRect);
+            }
             TopToolBar (topToolbarRect);
-#if UNITY_5_6
-            SearchBar (searchBarRect);
-            DoTreeView (multiColumnTreeViewRect);
-            BottomToolBar (bottomToolbarRect);
+#if UNITY_5_6_OR_NEWER
+            if (!bCheckHeapOnly)
+            {
+                SearchBar(searchBarRect);
+                DoTreeView(multiColumnTreeViewRect);
+                BottomToolBar(bottomToolbarRect);
+            }
 #else
             DoLegacyTreeView(multiColumnTreeViewRect);
 #endif
@@ -248,7 +301,7 @@ namespace UnityEditor.MemoryProfiler2
             //oldInputType = actualInputType;
             //GUI.EndScrollView();
         }
-#if UNITY_5_6
+#if UNITY_5_6_OR_NEWER
         void SearchBar (Rect rect)
 		{
 			treeView.searchString = SearchField.OnGUI(rect, treeView.searchString);
@@ -259,7 +312,7 @@ namespace UnityEditor.MemoryProfiler2
 			m_TreeView.OnGUI(rect);
 		}
 #endif
-		void DoCanvasView ( Rect rect )
+        void DoCanvasView ( Rect rect )
 		{
             m_nodeView.DrawProfilerNodeView(rect);
             Repaint();
@@ -273,26 +326,59 @@ namespace UnityEditor.MemoryProfiler2
 				var style = "miniButton";
 				if (GUILayout.Button("Take Snapshot", style))
 				{
-					m_Status = "Taking snapshot.....";
+                    bCheckHeapOnly = false;
+                    m_Status = "Taking snapshot.....";
 					UnityEditor.MemoryProfiler.MemorySnapshot.RequestNewSnapshot();
 				}
 
-				if (GUILayout.Button("Load Snapshot", style))
+                if (GUILayout.Button("Load Snapshot", style))
 				{
-					m_Status = "Loading snapshot.....";
+                    bCheckHeapOnly = false;
+                    m_Status = "Loading snapshot.....";
 					PackedMemorySnapshot packedSnapshot = PackedMemorySnapshotUtility.LoadFromFile();
-					if(packedSnapshot != null)
+                    //Debug.Log("Unlock!!!!!!!!!!!! " + packedSnapshot);
+                    if (packedSnapshot != null)
 						IncomingSnapshot(packedSnapshot);
 				}
 
-				if (GUILayout.Button("Save Snapshot", style))
-				{
-					m_Status = "Saving snapshot.....";
-					PackedMemorySnapshotUtility.SaveToFile(_snapshot);
-				}
-			}
+                if (_snapshot != null)
+                {
+                    if (GUILayout.Button("Save Snapshot", style))
+                    {
+                        m_Status = "Saving snapshot.....";
+                        PackedMemorySnapshotUtility.SaveToFile(_snapshot);
+                    }
+                }
+#if UNITY_5_6_OR_NEWER
+                if (_unpackedCrawl != null)
+                {
 
-			GUILayout.EndArea();
+                    if (bCheckHeapOnly)
+                    {
+                        if (GUILayout.Button("Show Tree/Node View", style))
+                        {
+                            bCheckHeapOnly = false;
+                            m_nodeView.bShowMemHeap = false;
+                            m_nodeView.ClearNodeView();
+                            m_TreeView.Reload();
+                        
+                        }
+                    }
+                    else
+
+                    {
+                        if (GUILayout.Button("Show Heap Usage", style))
+                        {
+                            bCheckHeapOnly = true;
+                            m_nodeView.ClearNodeView();
+                            m_nodeView.CreateTreelessView(_unpackedCrawl);
+                        }
+                    }
+                }
+#endif
+            }
+
+            GUILayout.EndArea();
 		}
 
 		void BottomToolBar (Rect rect)

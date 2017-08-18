@@ -42,13 +42,13 @@ namespace UnityEditor.MemoryProfiler2
         GUIStyle tmpStyle;
         MemoryHeapUsageComparer memComparer1;
         ManageObjectComparer memComparer2;
-        bool bShowMemHeap = false;
+        public bool bShowMemHeap = false;
         float offsetDialogPosY = 0;
         float tmpPosY = 0;
         GUIStyle colorHelpStyle = new GUIStyle();
 
         private List<MemoryHeapUsage> memUsageSectors = new List<MemoryHeapUsage>();
-        private List<int> memoryValues = new List<int>();
+        private List<long> memoryValues = new List<long>();
         private List<string> memoryLabelValues = new List<string>();
 
         static readonly string[] SizeSuffixes = { "bytes", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB" };
@@ -78,7 +78,7 @@ namespace UnityEditor.MemoryProfiler2
             memComparer1 = new MemoryHeapUsageComparer();
             memComparer2 = new ManageObjectComparer();
 
-            memoryValues = new List<int>();
+            memoryValues = new List<long>();
             for(int i=0;i<5;i++)
             {
                 memoryValues.Add(0);
@@ -217,8 +217,14 @@ namespace UnityEditor.MemoryProfiler2
             DrawProfilerNodes();
             ProfilerNodeZoomArea.End(panX, panY);
             DrawTotalMemory(rect);
-            DrawHeapMemory(rect);
-            DrawColorHelp(rect);
+            if (bShowMemHeap)
+            {
+                DrawHeapMemory(rect);
+            }
+            else
+            {
+                DrawColorHelp(rect);
+            }
         }
 
         public void DrawBackground(Rect rect)
@@ -334,13 +340,20 @@ namespace UnityEditor.MemoryProfiler2
 
         public void DrawHeapMemory(Rect rect)
         {
+
             memUsageSectors.Clear();
             int i = 0;
             int j = 0;
-            int sized = 0;
+            long sized = 0;
             if (_unpackedCrawl != null)
             {
-                //Debug.Log(" SIZE " + _unpackedCrawl.managedHeap.Length);
+                if(_unpackedCrawl.managedHeap.Length <=0)
+                {
+                    Rect heapMemBorder2 = new Rect(rect.x, (rect.height - ((memUsageSectors.Count + 1.0f) * 2) * 22) + offsetDialogPosY, rect.width, rect.height);
+                    GUI.Label(heapMemBorder2, "No Managed Objects found", memTitleStyleText);
+                    return;
+                }
+                Debug.Log(" Memory Sections found: " + _unpackedCrawl.managedHeap.Length);
                 foreach (var segment in _unpackedCrawl.managedHeap)
                 {
                     //Debug.Log(i + " test " + segment.startAddress + "  " + ((ulong)segment.bytes.Length));
@@ -357,6 +370,7 @@ namespace UnityEditor.MemoryProfiler2
                         if (manage.address >= memUsageSectors[k].section.startAddress && manage.address <= (memUsageSectors[k].section.startAddress + (ulong)memUsageSectors[k].section.bytes.Length))
                         {
                             memUsageSectors[k].sectors.Add(manage);
+                            memUsageSectors[k].totalSizeOfElements += manage.size;
                         }
                     }
                 }
@@ -377,37 +391,43 @@ namespace UnityEditor.MemoryProfiler2
 
                 Rect heapMemBorder = new Rect(rect.x, (rect.height - ((memUsageSectors.Count+1.0f) * 2) * 22)+ offsetDialogPosY, rect.width, rect.height);
                 GUI.Box(heapMemBorder, GUIContent.none, memHeapStyle2);
-                if (!bShowMemHeap)
-                {
-                    GUI.Label(heapMemBorder, "  Click to show Mono Heap", memTitleStyleText);
-                }
-                else
-                {
-                    GUI.Label(heapMemBorder, "  Mono Heap (Click to Hide)", memTitleStyleText);
-                }
+                //if (!bShowMemHeap)
+                //{
+                //    GUI.Label(heapMemBorder, "  Click to show Mono Heap", memTitleStyleText);
+                //}
+                //else
+                //{
+//#if !UNITY_5_6
+                    GUI.Label(heapMemBorder, "  Mono Heap (Memory Sections found: "+ _unpackedCrawl.managedHeap.Length+")", memTitleStyleText);
+//#else
+//                    GUI.Label(heapMemBorder, "  Mono Heap (Click to Hide)", memTitleStyleText);
+//#endif
+                //}
                 for (int h = 0; h < memUsageSectors.Count; h++)
-                {
+                {               
                     tmpStyle = memHeapStyle;
                     memUsageSectors[h].sectors.Sort(memComparer2);
                     GUI.Box(new Rect(rect.x, (rect.height - (22 * ((memUsageSectors.Count) * 2 - h * 2)))+ offsetDialogPosY, rect.width, 20), GUIContent.none, memHeapBarBGStyle);
+
+                    Rect labelPos = new Rect(rect.x, (rect.height - (22 * ((memUsageSectors.Count + 0.5f) * 2 - h * 2))) + offsetDialogPosY, rect.width, 30);
+                    GUI.Label(labelPos, " Memory sector " + h + ": " + memUsageSectors[h].section.startAddress + " - Size " + SizeSuffix(memUsageSectors[h].section.bytes.Length, 2) + " - Elements Size: " + memUsageSectors[h].totalSizeOfElements + " - # elements in this section: "+ memUsageSectors[h].sectors.Count, memHeapStyleText);
+
                     for (int r = 0; r < memUsageSectors[h].sectors.Count; r++)
                     {
-                        float zoomed = ((float)memUsageSectors[h].section.bytes.Length) / rect.width;                        
-                        Rect labelPos = new Rect(rect.x, (rect.height - (22 * ((memUsageSectors.Count+0.5f)*2 - h*2)))+offsetDialogPosY, rect.width, 30);
-                        GUI.Label(labelPos, "  Memory sector "+h+": " + memUsageSectors[h].section.startAddress + " size " + SizeSuffix(memUsageSectors[h].section.bytes.Length,2), memHeapStyleText);
-                        Rect position = new Rect(rect.x + ((memUsageSectors[h].sectors[r].address- memUsageSectors[h].section.startAddress)/zoomed), (rect.height - (22 *(memUsageSectors.Count*2-(h)*2)))+ offsetDialogPosY, memUsageSectors[h].sectors[r].size/ (int)zoomed, 20);
+                        float zoomed = ((float)memUsageSectors[h].section.bytes.Length) / rect.width;
+                        Rect position = new Rect(rect.x + ((memUsageSectors[h].sectors[r].address - memUsageSectors[h].section.startAddress) / zoomed), (rect.height - (22 * (memUsageSectors.Count * 2 - (h) * 2))) + offsetDialogPosY, memUsageSectors[h].sectors[r].size / zoomed, 20);
                         GUI.Box(position, GUIContent.none, tmpStyle);
                     }
                 }
 
-                if (heapMemBorder.Contains(Event.current.mousePosition))
-                {
-                    if (Event.current.type == EventType.MouseDown)
-                    {
-                        bShowMemHeap = !bShowMemHeap;
+                //if (heapMemBorder.Contains(Event.current.mousePosition))
+                //{
+                //    if (Event.current.type == EventType.MouseDown)
+                //    {
+                //        bShowMemHeap = !bShowMemHeap;
                         
-                    }
-                }
+                //    }
+                //}
 
                 if (!bShowMemHeap)
                 {
@@ -519,6 +539,12 @@ namespace UnityEditor.MemoryProfiler2
             ProfilerNode objectInfoNode = new ProfilerNode(info, _unpackedCrawl, this, true, null);
             CreateObjectInfoNode(objectInfoNode); 
         }
+
+        public void CreateTreelessView(CrawledMemorySnapshot unpackedCrawl)
+        {
+                _unpackedCrawl = unpackedCrawl;
+                bShowMemHeap = true;
+        }
     }
 }
 
@@ -526,6 +552,7 @@ public class MemoryHeapUsage
 {
     public MemorySection section;
     public List<ManagedObject> sectors = new List<ManagedObject>();
+    public long totalSizeOfElements;
 }
 
 public class MemoryHeapUsageComparer : IComparer<MemoryHeapUsage>

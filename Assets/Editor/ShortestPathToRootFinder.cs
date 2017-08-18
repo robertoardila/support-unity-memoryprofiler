@@ -118,11 +118,13 @@ namespace MemoryProfilerWindow
 
             if (packedNativeType.name == "Component")
                 return true;
-#if UNITY_4_5_OR_NEWER
+
+#if UNITY_5_6_OR_NEWER
             var baseClassID = packedNativeType.nativeBaseTypeArrayIndex;
 #else
             var baseClassID = packedNativeType.baseClassId;
 #endif
+
             return baseClassID != -1 && IsComponent(baseClassID);
         }
     }

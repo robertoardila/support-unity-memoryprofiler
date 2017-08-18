@@ -18,7 +18,7 @@ namespace Assets.Editor.Treemap
 
         public ThingInMemory _thingInMemory;
 
-        public int memorySize { get { return _thingInMemory.size; } }
+        public long memorySize { get { return _thingInMemory.size; } }
         public string name { get { return _thingInMemory.caption; } }
         public Color color { get { return _group.color; } }
 

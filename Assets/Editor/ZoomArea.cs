@@ -127,7 +127,11 @@ public class ZoomArea
     [System.Serializable]
     public class Styles
     {
+#if UNITY_5_5_OR_NEWER
+        public GUIStyle background = "AnimationKeyframeBackground";
+#else
         public GUIStyle background = "AnimationCurveEditorBackground";
+#endif
         public GUIStyle horizontalScrollbar;
         public GUIStyle horizontalMinMaxScrollbarThumb;
         public GUIStyle horizontalScrollbarLeftButton;
@@ -450,12 +454,11 @@ public class ZoomArea
                 }
                 break;
             case EventType.scrollWheel:
-                Debug.Log("Scroll");
-                //if (!area.Contains(Event.current.mousePosition))
-                //    break;
-                //if (m_IgnoreScrollWheelUntilClicked && GUIUtility.keyboardControl != id)
-                //    break;
-                Debug.Log("Scroll2");
+                if (!area.Contains(Event.current.mousePosition))
+                    break;
+                if (m_IgnoreScrollWheelUntilClicked && GUIUtility.keyboardControl != id)
+                    break;
+
                 // Zoom in around cursor position
                 Zoom(mousePositionInDrawing, true);
                 Event.current.Use();

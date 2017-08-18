@@ -24,22 +24,21 @@ namespace MemoryProfilerWindow
                 virtualMachineInformation = packedSnapshot.virtualMachineInformation
             };
 
-            var combined = new ThingInMemory[0].Concat(result.gcHandles).Concat(result.nativeObjects).Concat(result.staticFields).Concat(result.managedObjects).ToArray();
-            result.allObjects = combined;
+            result.FinishSnapshot();
 
-            var referencesLists = MakeTempLists(combined);
-            var referencedByLists = MakeTempLists(combined);
+            var referencesLists = MakeTempLists(result.allObjects);
+            var referencedByLists = MakeTempLists(result.allObjects);
 
             foreach (var connection in packedCrawlerData.connections)
             {
-                referencesLists[connection.@from].Add(combined[connection.to]);
-                referencedByLists[connection.to].Add(combined[connection.@from]);
+                referencesLists[connection.@from].Add(result.allObjects[connection.to]);
+                referencedByLists[connection.to].Add(result.allObjects[connection.@from]);
             }
 
-            for (var i = 0; i != combined.Length; i++)
+            for (var i = 0; i != result.allObjects.Length; i++)
             {
-                combined[i].references = referencesLists[i].ToArray();
-                combined[i].referencedBy = referencedByLists[i].ToArray();
+                result.allObjects[i].references = referencesLists[i].ToArray();
+                result.allObjects[i].referencedBy = referencedByLists[i].ToArray();
             }
 
             return result;
@@ -59,52 +58,34 @@ namespace MemoryProfilerWindow
                    {
                        typeDescription = typeDescription,
                        caption = "static fields of " + typeDescription.name,
-                       size = typeDescription.staticFieldBytes.Length,
-					   instanceID = -1,
-					   className = "--",
-					   type = "StaticField",
-					   name = typeDescription.name
+                       size = typeDescription.staticFieldBytes.Length
                    };
         }
 
         static GCHandle UnpackGCHandle(PackedMemorySnapshot packedSnapshot)
         {
-            return new GCHandle() 
-			{ 
-				size = packedSnapshot.virtualMachineInformation.pointerSize, 
-				caption = "gchandle",
-				instanceID = -1,
-				className = "--",
-				type = "GCHandle",
-				name = "gchandle"
-			};
+            return new GCHandle() { size = packedSnapshot.virtualMachineInformation.pointerSize, caption = "gchandle" };
         }
 
         static ManagedObject UnpackManagedObject(PackedMemorySnapshot packedSnapshot, PackedManagedObject pm)
         {
             var typeDescription = packedSnapshot.typeDescriptions[pm.typeIndex];
-            return new ManagedObject() 
-			{ 
-				address = pm.address, 
-				size = pm.size, 
-				typeDescription = typeDescription, 
-				caption = typeDescription.name,
-				instanceID = -1,
-				className = "--",
-				type = "ManagedObject",
-				name = typeDescription.name
-			};
+            return new ManagedObject() { address = pm.address, size = pm.size, typeDescription = typeDescription, caption = typeDescription.name };
         }
 
         static NativeUnityEngineObject UnpackNativeUnityEngineObject(PackedMemorySnapshot packedSnapshot, PackedNativeUnityEngineObject packedNativeUnityEngineObject)
         {
-#if UNITY_4_5_OR_NEWER
-            var className = packedSnapshot.nativeTypes[packedNativeUnityEngineObject.nativeTypeArrayIndex].name;
+#if UNITY_5_6_OR_NEWER
+            var classId = packedNativeUnityEngineObject.nativeTypeArrayIndex;
+#else
+            var classId = packedNativeUnityEngineObject.classId;
+#endif
+            var className = packedSnapshot.nativeTypes[classId].name;
 
             return new NativeUnityEngineObject()
                    {
                        instanceID = packedNativeUnityEngineObject.instanceId,
-                       classID = packedNativeUnityEngineObject.nativeTypeArrayIndex,
+                       classID = classId,
                        className = className,
                        name = packedNativeUnityEngineObject.name,
                        caption = packedNativeUnityEngineObject.name + "(" + className + ")",
@@ -112,27 +93,8 @@ namespace MemoryProfilerWindow
                        isPersistent = packedNativeUnityEngineObject.isPersistent,
                        isDontDestroyOnLoad = packedNativeUnityEngineObject.isDontDestroyOnLoad,
                        isManager = packedNativeUnityEngineObject.isManager,
-                       hideFlags = packedNativeUnityEngineObject.hideFlags,
-					   type = "NativeUnityEngineObject"
+                       hideFlags = packedNativeUnityEngineObject.hideFlags
                    };
-#else
-            var className = packedSnapshot.nativeTypes[packedNativeUnityEngineObject.classId].name;
-
-            return new NativeUnityEngineObject()
-            {
-                instanceID = packedNativeUnityEngineObject.instanceId,
-                classID = packedNativeUnityEngineObject.classId,
-                className = className,
-                name = packedNativeUnityEngineObject.name,
-                caption = packedNativeUnityEngineObject.name + "(" + className + ")",
-                size = packedNativeUnityEngineObject.size,
-                isPersistent = packedNativeUnityEngineObject.isPersistent,
-                isDontDestroyOnLoad = packedNativeUnityEngineObject.isDontDestroyOnLoad,
-                isManager = packedNativeUnityEngineObject.isManager,
-                hideFlags = packedNativeUnityEngineObject.hideFlags,
-                type = "NativeUnityEngineObject"
-            };
-#endif
         }
     }
 

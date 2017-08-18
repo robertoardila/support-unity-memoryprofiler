@@ -30,7 +30,7 @@ namespace Treemap
 
                 float currentInputValue = values[index];
 
-				if (currentInputValue <= 0f)
+				if (currentInputValue < 0f)
 					throw new ArgumentException ("only positive float values are supported. found: " + currentInputValue);
 
                 float currentOutputArea = currentInputValue * totalOutputArea / totalInputArea;

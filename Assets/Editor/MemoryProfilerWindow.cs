@@ -43,9 +43,10 @@ namespace MemoryProfilerWindow
         {
         }
 
-        public void OnDisable()
+        public void OnDestroy()
         {
-            //    UnityEditor.MemoryProfiler.MemorySnapshot.OnSnapshotReceived -= IncomingSnapshot;
+            UnityEditor.MemoryProfiler.MemorySnapshot.OnSnapshotReceived -= IncomingSnapshot;
+
             if (_treeMapView != null)
                 _treeMapView.CleanupMeshes ();
         }
@@ -74,7 +75,15 @@ namespace MemoryProfilerWindow
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Take Snapshot"))
             {
-                UnityEditor.MemoryProfiler.MemorySnapshot.RequestNewSnapshot();
+                UnityEditor.EditorUtility.DisplayProgressBar("Take Snapshot", "Downloading Snapshot...", 0.0f);
+                try
+                {
+                    UnityEditor.MemoryProfiler.MemorySnapshot.RequestNewSnapshot();
+                }
+                finally
+                {
+                    EditorUtility.ClearProgressBar();
+                }
             }
 
             EditorGUI.BeginDisabledGroup(_snapshot == null);
@@ -89,6 +98,11 @@ namespace MemoryProfilerWindow
                 PackedMemorySnapshot packedSnapshot = PackedMemorySnapshotUtility.LoadFromFile();
                 if(packedSnapshot != null)
                     IncomingSnapshot(packedSnapshot);
+            }
+
+            if (_unpackedCrawl != null)
+            {
+                GUILayout.Label(string.Format("Total memory: {0}", EditorUtility.FormatBytes(_unpackedCrawl.totalSize)));
             }
             GUILayout.EndHorizontal();
             if (_treeMapView != null)
@@ -145,8 +159,19 @@ namespace MemoryProfilerWindow
         {
             _snapshot = snapshot;
 
-            _packedCrawled = new Crawler().Crawl(_snapshot);
-            Unpack();
+            UnityEditor.EditorUtility.DisplayProgressBar("Take Snapshot", "Crawling Snapshot...", 0.33f);
+            try
+            {
+                _packedCrawled = new Crawler().Crawl(_snapshot);
+
+                UnityEditor.EditorUtility.DisplayProgressBar("Take Snapshot", "Unpacking Snapshot...", 0.67f);
+
+                Unpack();
+            }
+            finally
+            {
+                UnityEditor.EditorUtility.ClearProgressBar();
+            }
         }
     }
 }

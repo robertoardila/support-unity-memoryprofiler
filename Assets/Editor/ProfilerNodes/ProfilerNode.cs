@@ -62,8 +62,15 @@ namespace UnityEditor.MemoryProfiler2
 
         public ProfilerNode(ProfilerNodeObjectInfo info, CrawledMemorySnapshot newUnpackedCrawl, ProfilerNodeView newParent, bool createChildNodes, ProfilerNode newPrevNode)
         {
+            if(info == null)
+            {
+                return;
+            }
             myInfo = info;
-            nodeTitle = myInfo.memObject.caption;
+            if (myInfo.memObject != null)
+            {
+                nodeTitle = myInfo.memObject.caption;
+            }
             _unpackedCrawl = newUnpackedCrawl;
             parent = newParent;
             bCreateChildNodes = createChildNodes;

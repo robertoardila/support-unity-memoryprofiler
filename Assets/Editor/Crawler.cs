@@ -5,6 +5,43 @@ using UnityEditor.MemoryProfiler;
 
 namespace MemoryProfilerWindow
 {
+    enum PointerType
+    {
+        Reference,
+        RawPointer
+    }
+
+    struct ThingToProfile
+    {
+        public readonly PointerType type;
+        public readonly BytesAndOffset bytesAndOffset;
+        public readonly ulong objectPointer;
+        public readonly TypeDescription typeDescription;
+        public readonly bool useStaticFields;
+        public readonly int indexOfFrom;
+
+        public ThingToProfile(ulong objectPtr, int refIndexOfFrom)
+        {
+            type = PointerType.Reference;
+            objectPointer = objectPtr;
+            indexOfFrom = refIndexOfFrom;
+
+            useStaticFields = true;
+            typeDescription = new TypeDescription();
+            bytesAndOffset = new BytesAndOffset();
+        }
+
+        public ThingToProfile(TypeDescription typeDesc, BytesAndOffset inBytesAndOffset, bool inUseStaticFields, int inIndexOfFrom)
+        {
+            type = PointerType.RawPointer;
+            typeDescription = typeDesc;
+            bytesAndOffset = inBytesAndOffset;
+            useStaticFields = inUseStaticFields;
+            indexOfFrom = inIndexOfFrom;
+            objectPointer = 0;
+        }
+    }
+
     internal class Crawler
     {
         private Dictionary<UInt64, TypeDescription> _typeInfoToTypeDescription;
@@ -33,17 +70,33 @@ namespace MemoryProfilerWindow
 
             var managedObjects = new List<PackedManagedObject>(result.startIndices.OfFirstManagedObject * 3);
 
-            var connections = new List<Connection>(managedObjects.Count * 3);
+            var connections = new List<Connection>(managedObjects.Capacity * 3);
             //we will be adding a lot of connections, but the input format also already had connections. (nativeobject->nativeobject and nativeobject->gchandle). we'll add ours to the ones already there.
             connections.AddRange(input.connections);
 
-            for (int i = 0; i != input.gcHandles.Length; i++)
-                CrawlPointer(input, result.startIndices, input.gcHandles[i].target, result.startIndices.OfFirstGCHandle + i, connections, managedObjects);
+            Stack<ThingToProfile> thingsToProfile = new Stack<ThingToProfile>();
+            for(int i = 0; i < input.gcHandles.Length; ++i)
+            {
+                thingsToProfile.Push(new ThingToProfile(input.gcHandles[i].target, result.startIndices.OfFirstGCHandle + i));
+            }
 
             for (int i = 0; i < result.typesWithStaticFields.Length; i++)
             {
                 var typeDescription = result.typesWithStaticFields[i];
-                CrawlRawObjectData(input, result.startIndices, new BytesAndOffset {bytes = typeDescription.staticFieldBytes, offset = 0, pointerSize = _virtualMachineInformation.pointerSize}, typeDescription, true, result.startIndices.OfFirstStaticFields + i, connections, managedObjects);
+                thingsToProfile.Push(new ThingToProfile(typeDescription, new BytesAndOffset { bytes = typeDescription.staticFieldBytes, offset = 0, pointerSize = _virtualMachineInformation.pointerSize }, true, result.startIndices.OfFirstStaticFields + i));
+            }
+
+            while (thingsToProfile.Count > 0)
+            {
+                var thingToProfile = thingsToProfile.Pop();
+                if(thingToProfile.type == PointerType.Reference)
+                {
+                    CrawlPointerNonRecursive(input, result.startIndices, thingToProfile.objectPointer, thingToProfile.indexOfFrom, connections, managedObjects, thingsToProfile);
+                }
+                else
+                {
+                    CrawlRawObjectDataNonRecursive(input, result.startIndices, thingToProfile.bytesAndOffset, thingToProfile.typeDescription, thingToProfile.useStaticFields, thingToProfile.indexOfFrom, connections, managedObjects, thingsToProfile);
+                }
             }
 
             result.managedObjects = managedObjects.ToArray();
@@ -75,9 +128,9 @@ namespace MemoryProfilerWindow
                 var managedObjectIndex = i + startIndices.OfFirstManagedObject;
                 var address = packedCrawlerData.managedObjects[i].address;
 
-                var typeInfoAddress = RestoreObjectHeader(packedMemorySnapshot.managedHeapSections, address, managedObjectIndex);
+                var typeDescription = RestoreObjectHeader(packedMemorySnapshot.managedHeapSections, address, managedObjectIndex);
 
-                if (!DerivesFrom(packedMemorySnapshot.typeDescriptions, _typeInfoToTypeDescription[typeInfoAddress].typeIndex, unityEngineObjectTypeDescription.typeIndex))
+                if (!DerivesFrom(packedMemorySnapshot.typeDescriptions, typeDescription.typeIndex, unityEngineObjectTypeDescription.typeIndex))
                     continue;
 
                 int indexOfNativeObject = -1;
@@ -112,7 +165,24 @@ namespace MemoryProfilerWindow
             return DerivesFrom(typeDescriptions, baseIndex, potentialBase);
         }
 
-        private ulong RestoreObjectHeader(MemorySection[] heaps, ulong address, int managedObjectIndex)
+        private TypeDescription GetTypeDescription(MemorySection[] heap, ulong objectAddress)
+        {
+            TypeDescription typeDescription;
+
+            // IL2CPP has the class pointer as the first member of the object.
+            if (!_typeInfoToTypeDescription.TryGetValue(objectAddress, out typeDescription))
+            {
+                // Mono has a vtable pointer as the first member of the object.
+                // The first member of the vtable is the class pointer.
+                var vtable = heap.Find(objectAddress, _virtualMachineInformation);
+                var vtableClassPointer = vtable.ReadPointer();
+                typeDescription = _typeInfoToTypeDescription[vtableClassPointer];
+            }
+
+            return typeDescription;
+        }
+
+        private TypeDescription RestoreObjectHeader(MemorySection[] heaps, ulong address, int managedObjectIndex)
         {
             var bo = heaps.Find(address, _virtualMachineInformation);
             var mask = this._virtualMachineInformation.pointerSize == 8 ? System.UInt64.MaxValue - 1 : System.UInt32.MaxValue - 1;
@@ -123,45 +193,55 @@ namespace MemoryProfilerWindow
             UInt64 restoreValue = 0;
             _pointer2Backups.TryGetValue(managedObjectIndex, out restoreValue);
             bo.NextPointer().WritePointer(restoreValue);
-            return typeInfoAddress;
+
+            return GetTypeDescription(heaps, typeInfoAddress);
         }
 
-        private void CrawlRawObjectData(PackedMemorySnapshot packedMemorySnapshot, StartIndices startIndices, BytesAndOffset bytesAndOffset, TypeDescription typeDescription, bool useStaticFields, int indexOfFrom, List<Connection>  out_connections, List<PackedManagedObject> out_managedObjects)
+        private void CrawlRawObjectDataNonRecursive(PackedMemorySnapshot packedMemorySnapshot, StartIndices startIndices, BytesAndOffset bytesAndOffset, TypeDescription typeDescription, bool useStaticFields, int indexOfFrom,
+                                                        List<Connection> out_connections, List<PackedManagedObject> out_managedObjects, Stack<ThingToProfile> out_thingsToProfile)
         {
+
+            // Do not crawl MemoryProfilerWindow objects
+            if (typeDescription.name.StartsWith("MemoryProfilerWindow."))
+                return;
+
             var fields = useStaticFields ? _staticFields[typeDescription.typeIndex] : _instanceFields[typeDescription.typeIndex];
 
-            foreach (var field in fields)
+            for(int i = 0; i < fields.Length; ++i)
             {
+                var field = fields[i];
                 var fieldType = packedMemorySnapshot.typeDescriptions[field.typeIndex];
                 var fieldLocation = bytesAndOffset.Add(field.offset - (useStaticFields ? 0 : _virtualMachineInformation.objectHeaderSize));
 
-                if (fieldType.isValueType)
+                if(fieldType.isValueType)
                 {
-                    CrawlRawObjectData(packedMemorySnapshot, startIndices, fieldLocation, fieldType, false, indexOfFrom, out_connections, out_managedObjects);
+                    out_thingsToProfile.Push(new ThingToProfile(fieldType, fieldLocation, false, indexOfFrom));
                     continue;
                 }
+                else
+                {
+                    //temporary workaround for a bug in 5.3b4 and earlier where we would get literals returned as fields with offset 0. soon we'll be able to remove this code.
+                    bool gotException = false;
+                    try
+                    {
+                        fieldLocation.ReadPointer();
+                    }
+                    catch (ArgumentException)
+                    {
+                        UnityEngine.Debug.LogWarningFormat("Skipping field {0} on type {1}", field.name, typeDescription.name);
+                        UnityEngine.Debug.LogWarningFormat("FieldType.name: {0}", fieldType.name);
+                        gotException = true;
+                    }
 
-                //temporary workaround for a bug in 5.3b4 and earlier where we would get literals returned as fields with offset 0. soon we'll be able to remove this code.
-                bool gotException = false;
-                try
-                {
-                    fieldLocation.ReadPointer();
-                }
-                catch (ArgumentException)
-                {
-                    UnityEngine.Debug.LogWarningFormat("Skipping field {0} on type {1}", field.name, typeDescription.name);
-                    UnityEngine.Debug.LogWarningFormat("FieldType.name: {0}", fieldType.name);
-                    gotException = true;
-                }
-
-                if (!gotException)
-                {
-                    CrawlPointer(packedMemorySnapshot, startIndices, fieldLocation.ReadPointer(), indexOfFrom, out_connections, out_managedObjects);
+                    if (!gotException)
+                    {
+                        out_thingsToProfile.Push(new ThingToProfile(fieldLocation.ReadPointer(), indexOfFrom));
+                    }
                 }
             }
         }
 
-        private void CrawlPointer(PackedMemorySnapshot packedMemorySnapshot, StartIndices startIndices, ulong pointer, int indexOfFrom, List<Connection> out_connections, List<PackedManagedObject> out_managedObjects)
+        private void CrawlPointerNonRecursive(PackedMemorySnapshot packedMemorySnapshot, StartIndices startIndices, ulong pointer, int indexOfFrom, List<Connection> out_connections, List<PackedManagedObject> out_managedObjects, Stack<ThingToProfile> out_thingsToProfile)
         {
             var bo = packedMemorySnapshot.managedHeapSections.Find(pointer, _virtualMachineInformation);
             if (!bo.IsValid)
@@ -180,7 +260,7 @@ namespace MemoryProfilerWindow
                 return;
             }
 
-            out_connections.Add(new Connection() {from = indexOfFrom, to = indexOfObject});
+            out_connections.Add(new Connection() { from = indexOfFrom, to = indexOfObject });
 
             if (wasAlreadyCrawled)
                 return;
@@ -189,7 +269,7 @@ namespace MemoryProfilerWindow
 
             if (!typeDescription.isArray)
             {
-                CrawlRawObjectData(packedMemorySnapshot, startIndices, bo.Add(_virtualMachineInformation.objectHeaderSize), typeDescription, false, indexOfObject, out_connections, out_managedObjects);
+                out_thingsToProfile.Push(new ThingToProfile(typeDescription, bo.Add(_virtualMachineInformation.objectHeaderSize), false, indexOfObject));
                 return;
             }
 
@@ -200,12 +280,12 @@ namespace MemoryProfilerWindow
             {
                 if (elementType.isValueType)
                 {
-                    CrawlRawObjectData(packedMemorySnapshot, startIndices, cursor, elementType, false, indexOfObject, out_connections, out_managedObjects);
+                    out_thingsToProfile.Push(new ThingToProfile(elementType, cursor, false, indexOfObject));
                     cursor = cursor.Add(elementType.size);
                 }
                 else
                 {
-                    CrawlPointer(packedMemorySnapshot, startIndices, cursor.ReadPointer(), indexOfObject, out_connections, out_managedObjects);
+                    out_thingsToProfile.Push(new ThingToProfile(cursor.ReadPointer(), indexOfObject));
                     cursor = cursor.NextPointer();
                 }
             }
@@ -232,11 +312,11 @@ namespace MemoryProfilerWindow
 
             if (HasMarkBit(pointer1) == 0)
             {
+                TypeDescription typeDescription = GetTypeDescription(heap, pointer1);
+
                 wasAlreadyCrawled = false;
                 indexOfObject = outManagedObjects.Count + startIndices.OfFirstManagedObject;
-                typeInfoAddress = pointer1;
-                var typeDescription = _typeInfoToTypeDescription[pointer1];
-
+                typeInfoAddress = typeDescription.typeInfoAddress;
 
                 var size = SizeOfObjectInBytes(typeDescription, bo, heap, originalHeapAddress);
 

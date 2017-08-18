@@ -1,16 +1,33 @@
-﻿using System.IO;
+using System.IO;
 using UnityEngine;
 using UnityEditor;
 using UnityEditor.MemoryProfiler;
+using Newtonsoft.Json;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System;
+using System.Reflection;
+using Newtonsoft.Json.Serialization;
+
+#if UNITY_5_5_OR_NEWER
+using Profiler = UnityEngine.Profiling.Profiler;
+#else
+using Profiler = UnityEngine.Profiler;
+#endif
 
 public static class PackedMemorySnapshotUtility
 {
+
+    private static string previousDirectory = null;
+
     public static void SaveToFile(PackedMemorySnapshot snapshot)
     {
-        var filePath = EditorUtility.SaveFilePanel("Save Snapshot", null, "MemorySnapshot", "memsnap2");
+        var filePath = EditorUtility.SaveFilePanel("Save Snapshot", previousDirectory, "MemorySnapshot", "memsnap3");
         if(string.IsNullOrEmpty(filePath))
             return;
 
+        previousDirectory = Path.GetDirectoryName(filePath);
         SaveToFile(filePath, snapshot);
     }
 
@@ -19,50 +36,85 @@ public static class PackedMemorySnapshotUtility
         // Saving snapshots using JsonUtility, instead of BinaryFormatter, is significantly faster.
         // I cancelled saving a memory snapshot that is saving using BinaryFormatter after 24 hours.
         // Saving the same memory snapshot using JsonUtility.ToJson took 20 seconds only.
-#if UNITY_5_OR_NEWER
-        UnityEngine.Profiling.Profiler.BeginSample("PackedMemorySnapshotUtility.SaveToFile");
 
-        var json = JsonUtility.ToJson(snapshot);
-        File.WriteAllText(filePath, json);
-
-        UnityEngine.Profiling.Profiler.EndSample();
-#else
+        Debug.LogFormat("Saving...");
+        System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
         Profiler.BeginSample("PackedMemorySnapshotUtility.SaveToFile");
+        stopwatch.Start();
 
-        var json = JsonUtility.ToJson(snapshot);
-        File.WriteAllText(filePath, json);
+        string fileExtension = Path.GetExtension(filePath);
+        if (string.Equals(fileExtension, ".memsnap", System.StringComparison.OrdinalIgnoreCase)) {
+            System.Runtime.Serialization.Formatters.Binary.BinaryFormatter bf = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
+            using (Stream stream = File.Open(filePath, FileMode.Create)) {
+                bf.Serialize(stream, snapshot);
+            }
+        } else if (string.Equals(fileExtension, ".memsnap2", System.StringComparison.OrdinalIgnoreCase)) {
+            var json = JsonUtility.ToJson(snapshot);
+            File.WriteAllText(filePath, json);
+        } else { // memsnap3 + default
+            // Stream writing -- will not to exhaust memory (for large snapshots)
+            using (TextWriter writer = File.CreateText(filePath)) {
+                var errors = new List<string>();
+                var serializer = getSerializer(errors);
+                serializer.Serialize(writer, snapshot);
+                logErrors(errors);
+            }
+        }
 
+        stopwatch.Stop();
         Profiler.EndSample();
-#endif
+        Debug.LogFormat("Saving took {0}ms", stopwatch.ElapsedMilliseconds);
     }
 
     public static PackedMemorySnapshot LoadFromFile()
     {
-        var filePath = EditorUtility.OpenFilePanelWithFilters("Load Snapshot", null, new[] { "Snapshots", "memsnap2,memsnap" });
+        var filePath = EditorUtility.OpenFilePanelWithFilters("Load Snapshot", previousDirectory, new[] { "Snapshots", "memsnap3,memsnap2,memsnap" });
         if(string.IsNullOrEmpty(filePath))
             return null;
 
-        return LoadFromFile(filePath);
+        previousDirectory = Path.GetDirectoryName(filePath);
+        Debug.LogFormat("Loading \"{0}\"", filePath);
+        var packedSnapshot = LoadFromFile(filePath);
+        Debug.LogFormat("Completed loading \"{0}\"", filePath);
+        return packedSnapshot;
     }
 
     static PackedMemorySnapshot LoadFromFile(string filePath)
     {
-#if UNITY_5_OR_NEWER
-        PackedMemorySnapshot result = null;
+        Debug.LogFormat("Loading...");
+        System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
+        PackedMemorySnapshot result;
         string fileExtension = Path.GetExtension(filePath);
 
-        if(string.Equals(fileExtension, ".memsnap2", System.StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(fileExtension, ".memsnap3", System.StringComparison.OrdinalIgnoreCase)) {
+            Profiler.BeginSample("PackedMemorySnapshotUtility.LoadFromFile(litjson)");
+            stopwatch.Start();
+
+            using (TextReader reader = File.OpenText(filePath)) {
+                var errors = new List<string>();
+                var serializer = getSerializer(errors);
+                result = (PackedMemorySnapshot) serializer.Deserialize(reader, typeof(PackedMemorySnapshot));
+                logErrors(errors);
+            }
+
+            stopwatch.Stop();
+            Profiler.EndSample();
+        }
+        else if(string.Equals(fileExtension, ".memsnap2", System.StringComparison.OrdinalIgnoreCase))
         {
-            UnityEngine.Profiling.Profiler.BeginSample("PackedMemorySnapshotUtility.LoadFromFile(json)");
+            Profiler.BeginSample("PackedMemorySnapshotUtility.LoadFromFile(json)");
+            stopwatch.Start();
 
             var json = File.ReadAllText(filePath);
             result = JsonUtility.FromJson<PackedMemorySnapshot>(json);
 
-            UnityEngine.Profiling.Profiler.EndSample();
+            stopwatch.Stop();
+            Profiler.EndSample();
         }
         else if(string.Equals(fileExtension, ".memsnap", System.StringComparison.OrdinalIgnoreCase))
         {
-            UnityEngine.Profiling.Profiler.BeginSample("PackedMemorySnapshotUtility.LoadFromFile(binary)");
+            Profiler.BeginSample("PackedMemorySnapshotUtility.LoadFromFile(binary)");
+            stopwatch.Start();
 
             var binaryFormatter = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
             using(Stream stream = File.Open(filePath, FileMode.Open))
@@ -70,46 +122,89 @@ public static class PackedMemorySnapshotUtility
                 result = binaryFormatter.Deserialize(stream) as PackedMemorySnapshot;
             }
 
-            UnityEngine.Profiling.Profiler.EndSample();
-        }
-        else
-        {
-            Debug.LogErrorFormat("MemoryProfiler: Unrecognized memory snapshot format '{0}'.", filePath);
-        }
-
-        return result;
-#else
-        PackedMemorySnapshot result = null;
-        string fileExtension = Path.GetExtension(filePath);
-
-        if (string.Equals(fileExtension, ".memsnap2", System.StringComparison.OrdinalIgnoreCase))
-        {
-            Profiler.BeginSample("PackedMemorySnapshotUtility.LoadFromFile(json)");
-
-            var json = File.ReadAllText(filePath);
-            result = JsonUtility.FromJson<PackedMemorySnapshot>(json);
-
-            Profiler.EndSample();
-        }
-        else if (string.Equals(fileExtension, ".memsnap", System.StringComparison.OrdinalIgnoreCase))
-        {
-            Profiler.BeginSample("PackedMemorySnapshotUtility.LoadFromFile(binary)");
-
-            var binaryFormatter = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
-            using (Stream stream = File.Open(filePath, FileMode.Open))
-            {
-                result = binaryFormatter.Deserialize(stream) as PackedMemorySnapshot;
-            }
-
+            stopwatch.Stop();
             Profiler.EndSample();
         }
         else
         {
             Debug.LogErrorFormat("MemoryProfiler: Unrecognized memory snapshot format '{0}'.", filePath);
+            result = null;
         }
 
+        Debug.LogFormat("Loading took {0}ms", stopwatch.ElapsedMilliseconds);
         return result;
-#endif
     }
+
+    private static JsonSerializer getSerializer(List<string> errors) {
+        JsonSerializer serializer = new JsonSerializer();
+        serializer.ContractResolver = new MyContractResolver();
+        serializer.ConstructorHandling = ConstructorHandling.AllowNonPublicDefaultConstructor;
+        serializer.MissingMemberHandling = MissingMemberHandling.Error;
+        serializer.Error += (object sender, Newtonsoft.Json.Serialization.ErrorEventArgs args) => {
+            errors.Add(string.Format("'{1}' from '{0}'", sender, args.ErrorContext.Error.Message));
+        };
+        // Enable this to get detailed logging
+        //serializer.TraceWriter = new FilteringTraceLogWriter("typeDescriptions");
+        return serializer;
+    }
+
+    private static void logErrors(List<string> errors) {
+        if (0 < errors.Count) {
+            var last = Mathf.Min(20, errors.Count); // might be very large, just do the first 20
+            var sb = new StringBuilder();
+            for (int i = 0; i < last; i++) {
+                sb.AppendLine(errors[i]);
+            }
+            UnityEngine.Debug.Log(sb.ToString());
+        }
+    }
+
+    private sealed class MyContractResolver : Newtonsoft.Json.Serialization.DefaultContractResolver {
+
+        public MyContractResolver() : base() {
+            IgnoreSerializableAttribute = false; // Use SerializableAttribute to determine what to serialize!
+        }
+
+    }
+
+    private class FilteringTraceLogWriter : Newtonsoft.Json.Serialization.ITraceWriter {
+
+        private readonly string pattern;
+
+        public FilteringTraceLogWriter() : this(null) {
+        }
+
+        public FilteringTraceLogWriter(string pattern) {
+            this.pattern = pattern;
+        }
+
+        public System.Diagnostics.TraceLevel LevelFilter {
+            get { return System.Diagnostics.TraceLevel.Verbose; }
+        }
+
+        private static readonly LogType[] logTypeFromTraceLevel = new LogType[] {
+            LogType.Log, // off -- it's handled elsewhere
+            LogType.Error, // error
+            LogType.Warning, // warning
+            LogType.Log, // info
+            LogType.Log, // verbose
+        };
+
+        public void Trace(System.Diagnostics.TraceLevel level, string message, Exception ex) {
+            if (System.Diagnostics.TraceLevel.Off == level || null != pattern) {
+                if (!message.Contains(pattern)) { // Skip if not pattern
+                    return;
+                }
+            }
+#if UNITY_2017_OR_NEWER
+            UnityEngine.Debug.unityLogger.Log(logTypeFromTraceLevel[(int) level], message);
+#else
+#endif
+            if (null != ex) {
+                UnityEngine.Debug.LogException(ex);
+            }
+        }
+    }
+
 }
 
