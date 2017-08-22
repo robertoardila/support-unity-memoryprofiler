@@ -46,6 +46,7 @@ namespace UnityEditor.MemoryProfiler2
         float offsetDialogPosY = 0;
         float tmpPosY = 0;
         GUIStyle colorHelpStyle = new GUIStyle();
+        public Vector2 scrollPosition = Vector2.zero;
 
         private List<MemoryHeapUsage> memUsageSectors = new List<MemoryHeapUsage>();
         private List<long> memoryValues = new List<long>();
@@ -353,10 +354,8 @@ namespace UnityEditor.MemoryProfiler2
                     GUI.Label(heapMemBorder2, "No Managed Objects found", memTitleStyleText);
                     return;
                 }
-                Debug.Log(" Memory Sections found: " + _unpackedCrawl.managedHeap.Length);
                 foreach (var segment in _unpackedCrawl.managedHeap)
                 {
-                    //Debug.Log(i + " test " + segment.startAddress + "  " + ((ulong)segment.bytes.Length));
                     i++;
                     MemoryHeapUsage memSector = new MemoryHeapUsage();
                     memSector.section = segment;
@@ -381,68 +380,37 @@ namespace UnityEditor.MemoryProfiler2
                     j++;
                 }
 
-
-                //Debug.Log("EL sized " + sized + "___" + j);
-                //Debug.Log("VM Granularity " + _unpackedCrawl.virtualMachineInformation.allocationGranularity);
                 memUsageSectors.Sort(memComparer1);
                 ulong heapSpace = ((memUsageSectors[memUsageSectors.Count-1].section.startAddress + (ulong)memUsageSectors[memUsageSectors.Count - 1].section.bytes.Length))- memUsageSectors[0].section.startAddress;
-                //Debug.Log("::::"+ memUsageSectors[0].section.bytes.Length);
-                //Debug.Log(" HEAPPP "+heapSpace+"__"+ memUsageSectors[0].section.startAddress + "__" + memUsageSectors[0].section.bytes.Length + "__"+ memUsageSectors[memUsageSectors.Count - 1].section.startAddress+"__"+ memUsageSectors[memUsageSectors.Count - 1].section.bytes.Length+"__"+rect.width);
 
-                Rect heapMemBorder = new Rect(rect.x, (rect.height - ((memUsageSectors.Count+1.0f) * 2) * 22)+ offsetDialogPosY, rect.width, rect.height);
+                Rect heapMemBorder = new Rect(rect.x, 150, rect.width,  ((memUsageSectors.Count + 1.0f) * 2) * 22);
                 GUI.Box(heapMemBorder, GUIContent.none, memHeapStyle2);
-                //if (!bShowMemHeap)
-                //{
-                //    GUI.Label(heapMemBorder, "  Click to show Mono Heap", memTitleStyleText);
-                //}
-                //else
-                //{
-//#if !UNITY_5_6
-                    GUI.Label(heapMemBorder, "  Mono Heap (Memory Sections found: "+ _unpackedCrawl.managedHeap.Length+")", memTitleStyleText);
-//#else
-//                    GUI.Label(heapMemBorder, "  Mono Heap (Click to Hide)", memTitleStyleText);
-//#endif
-                //}
+
+                GUI.Label(heapMemBorder, "  Mono Heap (Memory Sections found: "+ _unpackedCrawl.managedHeap.Length+")", memTitleStyleText);
+
+                int altura = (((memUsageSectors.Count + 1) * 2) * 22);
+                scrollPosition = GUI.BeginScrollView(new Rect(0, 170, rect.width, rect.height - 150), scrollPosition, new Rect(0, 0, rect.width-20, altura));
+
+
                 for (int h = 0; h < memUsageSectors.Count; h++)
-                {               
+                {
                     tmpStyle = memHeapStyle;
                     memUsageSectors[h].sectors.Sort(memComparer2);
-                    GUI.Box(new Rect(rect.x, (rect.height - (22 * ((memUsageSectors.Count) * 2 - h * 2)))+ offsetDialogPosY, rect.width, 20), GUIContent.none, memHeapBarBGStyle);
 
-                    Rect labelPos = new Rect(rect.x, (rect.height - (22 * ((memUsageSectors.Count + 0.5f) * 2 - h * 2))) + offsetDialogPosY, rect.width, 30);
-                    GUI.Label(labelPos, " Memory sector " + h + ": " + memUsageSectors[h].section.startAddress + " - Size " + SizeSuffix(memUsageSectors[h].section.bytes.Length, 2) + " - Elements Size: " + memUsageSectors[h].totalSizeOfElements + " - # elements in this section: "+ memUsageSectors[h].sectors.Count, memHeapStyleText);
+                    GUI.Box(new Rect(rect.x, 42+(22*h)+(h*20), rect.width, 15), GUIContent.none, memHeapBarBGStyle);
+
+                    Rect labelPos = new Rect(rect.x, 22+(22 * h) + (h * 20), rect.width, 30);
+                    GUI.Label(labelPos, " Memory sector " + h + ": " + memUsageSectors[h].section.startAddress + " - Size " + SizeSuffix(memUsageSectors[h].section.bytes.Length, 2) + " - Elements Size: " + memUsageSectors[h].totalSizeOfElements + " - # elements in this section: " + memUsageSectors[h].sectors.Count, memHeapStyleText);
 
                     for (int r = 0; r < memUsageSectors[h].sectors.Count; r++)
                     {
-                        float zoomed = ((float)memUsageSectors[h].section.bytes.Length) / rect.width;
-                        Rect position = new Rect(rect.x + ((memUsageSectors[h].sectors[r].address - memUsageSectors[h].section.startAddress) / zoomed), (rect.height - (22 * (memUsageSectors.Count * 2 - (h) * 2))) + offsetDialogPosY, memUsageSectors[h].sectors[r].size / zoomed, 20);
+                        float zoomed = ((float)memUsageSectors[h].section.bytes.Length) / (rect.width-20);
+                        Rect position = new Rect(rect.x + ((memUsageSectors[h].sectors[r].address - memUsageSectors[h].section.startAddress) / zoomed), 22+20+(22 * h) + (h * 20), memUsageSectors[h].sectors[r].size / zoomed, 15);
                         GUI.Box(position, GUIContent.none, tmpStyle);
                     }
                 }
 
-                //if (heapMemBorder.Contains(Event.current.mousePosition))
-                //{
-                //    if (Event.current.type == EventType.MouseDown)
-                //    {
-                //        bShowMemHeap = !bShowMemHeap;
-                        
-                //    }
-                //}
-
-                if (!bShowMemHeap)
-                {
-                    if (((rect.height - ((memUsageSectors.Count + 1.0f) * 2) * 22) + offsetDialogPosY) <= rect.height - 20)
-                    {
-                        offsetDialogPosY += 20 * Time.deltaTime;
-                    }
-                }
-                else
-                {
-                    if (((rect.height - ((memUsageSectors.Count + 1.0f) * 2) * 22) + offsetDialogPosY) >= (rect.height - ((memUsageSectors.Count + 1.0f) * 2) * 22))
-                    {
-                        offsetDialogPosY -= 20 * Time.deltaTime;
-                    }
-                }
+                GUI.EndScrollView();
             }
         }
 
