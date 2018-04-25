@@ -57,23 +57,23 @@ namespace UnityEditor.MemoryProfiler2
         public ProfilerNodeView(EditorWindow window)
         {
             myParentWindow = window;
-            Bgtexture = Resources.Load("background") as Texture2D;
-            bgMemHeapDialog = Resources.Load("bgMenu") as Texture2D;
-            //memHeapStyle = new GUIStyle("flow node 5");
+            Bgtexture = Resources.Load("MemoryProfiler_Resources/MemoryProfiler_Background") as Texture2D;
+            bgMemHeapDialog = Resources.Load("MemoryProfiler_EditorResources/MemoryProfiler_bgMenu") as Texture2D;
 
-            GUISkin skin = EditorGUIUtility.Load("DialogGUISkin.guiskin") as GUISkin;
+
+            GUISkin skin = EditorGUIUtility.Load("MemoryProfiler_EditorResources/MemoryProfiler_DialogGUISkin.guiskin") as GUISkin;
             memHeapStyle2 = new GUIStyle(skin.box);
 
-            GUISkin skin2 = EditorGUIUtility.Load("MemHeapGUISkin.guiskin") as GUISkin;
+            GUISkin skin2 = EditorGUIUtility.Load("MemoryProfiler_EditorResources/MemoryProfiler_MemHeapGUISkin.guiskin") as GUISkin;
             memHeapBarBGStyle = new GUIStyle(skin2.box);
 
-            GUISkin skin3 = EditorGUIUtility.Load("memSegmentGUISkin.guiskin") as GUISkin;
+            GUISkin skin3 = EditorGUIUtility.Load("MemoryProfiler_EditorResources/MemoryProfiler_memSegmentGUISkin.guiskin") as GUISkin;
             memHeapStyle = new GUIStyle(skin3.box);
 
-            GUISkin skin4 = EditorGUIUtility.Load("DialogGUISkin.guiskin") as GUISkin;
+            GUISkin skin4 = EditorGUIUtility.Load("MemoryProfiler_EditorResources/MemoryProfiler_DialogGUISkin.guiskin") as GUISkin;
             memTitleStyleText = new GUIStyle(skin4.label);
 
-            GUISkin skin5 = EditorGUIUtility.Load("MemHeapGUISkin.guiskin") as GUISkin;
+            GUISkin skin5 = EditorGUIUtility.Load("MemoryProfiler_EditorResources/MemoryProfiler_MemHeapGUISkin.guiskin") as GUISkin;
             memHeapStyleText = new GUIStyle(skin5.label);
 
             memComparer1 = new MemoryHeapUsageComparer();

@@ -98,7 +98,7 @@ namespace UnityEditor.MemoryProfiler2
         {
             if (nodeStyle == null)
             {
-                GUISkin skin = EditorGUIUtility.Load("NodeGUISkin.guiskin") as GUISkin;
+                GUISkin skin = EditorGUIUtility.Load("MemoryProfiler_EditorResources/MemoryProfiler_NodeGUISkin.guiskin") as GUISkin;
                 nodeStyle = new GUIStyle(skin.window);
             }
             int size = 18 * (myInfo.memObject.references.Length + myInfo.memObject.referencedBy.Length + 9 + 128);

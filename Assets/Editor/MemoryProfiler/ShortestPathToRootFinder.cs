@@ -59,7 +59,10 @@ namespace MemoryProfilerWindow
 
             var nativeObject = thing as NativeUnityEngineObject;
             if (nativeObject == null)
-                throw new ArgumentException("Unknown type: " + thing.GetType());
+            {
+               // throw new ArgumentException("Unknown type: " + thing.GetType());
+                return false;
+            }
             if (nativeObject.isManager)
             {
                 reason = "this is an internal unity'manager' style object, which is a global object that will never be unloaded";
