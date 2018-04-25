@@ -1,6 +1,0 @@
-/Library
-/*.collabignore
-/.vs/support-unity-memoryprofiler/v14/*.suo
-/*.csproj
-/*.sln
-/Assets/Editor/JsonDotNet20/*.meta
