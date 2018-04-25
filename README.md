@@ -7,12 +7,19 @@ Extension for the existing Unity memory profiler project, this is a WIP project 
 * It uses the same snapshots taken with the Memory Profiler project from bitbucket (You can use as an example memory snapshot which is included in the repository)
 * It's recommended to read snapshots taken from the same Unity version (for example analyse 5.6 snapshots using 5.6 editor,etc) 
 * You can search though a existing snapshot by using the following search options in the Tree/Node View Panel (You can also combine them to create complex filters):
+	
 	i: string         filter by InstanceID  
+	
 	n: string         filter by resource name
+	
 	t: string         filter by type (managed, native, static, etc).
+	
 	s: string         filter by size (s: 10.7 will wind all the 10.7MB elements)
+	
 	s:< string        filter by less or equal size
+	
 	s:> string        filter by greater or equal size
+	
 	c: string         filter by class name
 
 
