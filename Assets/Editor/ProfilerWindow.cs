@@ -38,7 +38,7 @@ namespace UnityEditor.MemoryProfiler2
         [NonSerialized]
         private ProfilerNodeView m_nodeView;
 
-        [MenuItem("VMemory Tools/Profiler")]
+        [MenuItem("Support Memory Tools/Profiler")]
         public static ProfilerWindow GetWindow()
         {
             var window = GetWindow<ProfilerWindow>();
@@ -48,7 +48,9 @@ namespace UnityEditor.MemoryProfiler2
             return window;
         }
 
-        
+        GUIStyle blueColorStyle;
+        GUIStyle redColorStyle;
+        GUIStyle greenColorStyle;
 
         public enum FilterType
         {
@@ -60,25 +62,6 @@ namespace UnityEditor.MemoryProfiler2
         private FilterType actualInputType = FilterType.Mesh;
         private FilterType oldInputType = FilterType.None;
         private Vector2 scrollViewVector = Vector2.zero;
-
-        /*[OnOpenAsset]
-		public static bool OnOpenAsset (int instanceID, int line)
-		{
-			var myTreeAsset = EditorUtility.InstanceIDToObject (instanceID) as MyTreeAsset;
-			if (myTreeAsset != null)
-			{
-				var window = GetWindow ();
-				window.SetTreeAsset(myTreeAsset);
-				return true;
-			}
-			return false; // we did not handle the open
-		}*/
-
-        /*void SetTreeAsset (MyTreeAsset myTreeAsset)
-		{
-			m_MyTreeAsset = myTreeAsset;
-			m_Initialized = false;
-		}*/
 
         Rect topToolbarRect
 		{
@@ -115,9 +98,21 @@ namespace UnityEditor.MemoryProfiler2
 			get { return m_TreeView; }
 		}
 #endif
+        public void InitButonStyles()
+        {
+            blueColorStyle = new GUIStyle(GUI.skin.button);
+            blueColorStyle.normal.textColor = Color.green;
+            greenColorStyle = new GUIStyle(GUI.skin.button);
+            greenColorStyle.normal.textColor = Color.red;
+            redColorStyle = new GUIStyle(GUI.skin.button);
+            redColorStyle.normal.textColor = Color.yellow;
+        }
+
         void InitIfNeeded ()
 		{
-			if (!m_Initialized)
+            InitButonStyles();
+
+            if (!m_Initialized)
 			{
                 //Init the Node View
                 m_nodeView = new ProfilerNodeView(this);
@@ -151,9 +146,7 @@ namespace UnityEditor.MemoryProfiler2
 		{
             if (m_TreeView.GetSelection().Count > 0)
             {
-                Debug.Log("ON CLICK CELL " + m_TreeView.GetSelection()[0]);
                 MemoryElement tmp = m_TreeModel.Find(id);
-                Debug.Log("ME: " + tmp.name);
                 m_nodeView.CreateNode(tmp.memData, _unpackedCrawl);
             }
 		}
@@ -180,10 +173,7 @@ namespace UnityEditor.MemoryProfiler2
 			    m_TreeView.Reload ();
 #endif
             }
-            //Debug.Log("Snapshot Loaded! " + _unpackedCrawl);
             m_Status = "Snapshot Loaded!";
-
-            
         }
 
 		private IList<MemoryElement> populateData (int numTotalElements)
@@ -277,41 +267,15 @@ namespace UnityEditor.MemoryProfiler2
             }
             TopToolBar (topToolbarRect);
            
-#if UNITY_5_6_OR_NEWER
+
             if (!bCheckHeapOnly)
             {
                 SearchBar(searchBarRect);
                 DoTreeView(multiColumnTreeViewRect);
                 BottomToolBar(bottomToolbarRect);
             }
-#else
-            DoLegacyTreeView(multiColumnTreeViewRect);
-#endif
         }
 
-        void DoLegacyTreeView(Rect rect)
-        {
-            //Event e = Event.current;
-            //EditorGUILayout.BeginVertical();
-            //actualInputType = (FilterType)EditorGUILayout.EnumPopup("Select filter type: ", actualInputType);
-
-            //if (actualInputType != oldInputType)
-            //{
-            //    FilterList(actualInputType);
-            //}
-            //scrollViewVector = GUI.BeginScrollView(new Rect(5, 50, 225, 500), scrollViewVector, new Rect(0, 40, 225, 18 * filteredList.Count));
-            //for (int i = 0; i < filteredList.Count; i++)
-            //{
-            //    EditorGUILayout.LabelField(filteredList[i].text);
-            //    if (e.type == EventType.Repaint)
-            //    {
-            //        filteredList[i].myAreaRect = GUILayoutUtility.GetLastRect();
-            //    }
-            //}
-            //EditorGUILayout.EndVertical();
-            //oldInputType = actualInputType;
-            //GUI.EndScrollView();
-        }
 #if UNITY_5_6_OR_NEWER
         void SearchBar (Rect rect)
 		{
@@ -347,7 +311,6 @@ namespace UnityEditor.MemoryProfiler2
                     bCheckHeapOnly = false;
                     m_Status = "Loading snapshot.....";
 					PackedMemorySnapshot packedSnapshot = PackedMemorySnapshotUtility.LoadFromFile();
-                    //Debug.Log("Unlock!!!!!!!!!!!! " + packedSnapshot);
                     if (packedSnapshot != null)
 						IncomingSnapshot(packedSnapshot);
 				}
@@ -365,8 +328,6 @@ namespace UnityEditor.MemoryProfiler2
                 if (_unpackedCrawl != null)
                 {
 #if UNITY_5_6_OR_NEWER
-                    //if (bCheckHeapOnly)
-                    //{
 
                         if (GUILayout.Button("Show Tree/Node View", style))
                         {
@@ -376,9 +337,7 @@ namespace UnityEditor.MemoryProfiler2
                             m_TreeView.Reload();
                         }
 
-                    //}
-                    //else
-                    {
+                    
 #endif
                         if (GUILayout.Button("Show Heap Usage", style))
                         {
@@ -394,7 +353,7 @@ namespace UnityEditor.MemoryProfiler2
                             bshowPlainData = true;
                         }
 #if UNITY_5_6_OR_NEWER
-                    }
+                    
 #endif
                 }
 
@@ -418,23 +377,54 @@ namespace UnityEditor.MemoryProfiler2
             if (_unpackedCrawl != null)
             {
                 GUILayout.Label(" ");
-                if (GUILayout.Button("Save full list of elements data to an external .csv file"))
+                if (GUILayout.Button("Save full list of MANAGED objects data to an external .csv file",blueColorStyle))
                 {
-                    string exportPath = EditorUtility.SaveFilePanel("Save Snapshot Info", Application.dataPath, "SnapshotExport.csv", "csv");
+                    string exportPath = EditorUtility.SaveFilePanel("Save Snapshot Info", Application.dataPath, "MANAGED SnapshotExport ("+ DateTime.Now.ToString("dd-MM-yyyy hh-mm-ss") + ").csv", "csv");
                     if (!String.IsNullOrEmpty(exportPath))
                     {
                         System.IO.StreamWriter sw = new System.IO.StreamWriter(exportPath);
-                        sw.WriteLine("Managed Objects");
+                        sw.WriteLine(" Managed Objects , Size , Caption , Type , Number of References (Total), Referenced By (Total), Address ");
                         for (int i = 0; i < _unpackedCrawl.managedObjects.Length; i++)
                         {
                             ManagedObject managedObject = _unpackedCrawl.managedObjects[i];
-                            sw.WriteLine("Address: " + managedObject.address + ", Caption: " + managedObject.caption + ", Type:, " + managedObject.typeDescription.name + ",Size:," + managedObject.size);
+                            sw.WriteLine("Managed,"+managedObject.size + "," + CleanStrings(managedObject.caption) + "," + CleanStrings(managedObject.typeDescription.name) + ","+managedObject.references.Length+","+managedObject.referencedBy.Length+","+managedObject.address);
                         }
-                        sw.WriteLine("Native Objects");
+                        sw.Flush();
+                        sw.Close();
+                    }
+                }
+                if (GUILayout.Button("Save full list of NATIVE objects data to an external .csv file",greenColorStyle))
+                {
+                    string exportPath = EditorUtility.SaveFilePanel("Save Snapshot Info", Application.dataPath, "NATIVE SnapshotExport (" + DateTime.Now.ToString("dd-MM-yyyy hh-mm-ss") + ").csv", "csv");
+                    if (!String.IsNullOrEmpty(exportPath))
+                    {
+                        System.IO.StreamWriter sw = new System.IO.StreamWriter(exportPath);
+                        sw.WriteLine(" Native Objects , Size , Caption , Class Name , Name , Number of References (Total), Referenced By (Total), InstanceID ");
                         for (int i = 0; i < _unpackedCrawl.nativeObjects.Length; i++)
                         {
                             NativeUnityEngineObject nativeObject = _unpackedCrawl.nativeObjects[i];
-                            sw.WriteLine("InstanceID: " + nativeObject.instanceID + ", Name: " + nativeObject.name + ", Class Name:, " + nativeObject.className + ",Size:," + nativeObject.size );
+                            sw.WriteLine("Native," + nativeObject.size + "," + CleanStrings(nativeObject.caption) + "," + CleanStrings(nativeObject.className) + "," + CleanStrings(nativeObject.name) + "," + nativeObject.references.Length + "," + nativeObject.referencedBy.Length + "," + nativeObject.instanceID);
+                        }
+                        sw.Flush();
+                        sw.Close();
+                    }
+                }
+                if (GUILayout.Button("Save full list of All objects data to an external .csv file",redColorStyle))
+                {
+                    string exportPath = EditorUtility.SaveFilePanel("Save Snapshot Info", Application.dataPath, "ALL SnapshotExport ("+ DateTime.Now.ToString("dd-MM-yyyy hh-mm-ss") + ").csv", "csv");
+                    if (!String.IsNullOrEmpty(exportPath))
+                    {
+                        System.IO.StreamWriter sw = new System.IO.StreamWriter(exportPath);
+                        sw.WriteLine(" Object , Size , Caption , Type , Number of References (Total), Referenced By (Total), Address (Managed) or InstanceID (Native) ");
+                        for (int i = 0; i < _unpackedCrawl.managedObjects.Length; i++)
+                        {
+                            ManagedObject managedObject = _unpackedCrawl.managedObjects[i];
+                            sw.WriteLine("Managed," + managedObject.size + "," + CleanStrings(managedObject.caption) + "," + CleanStrings(managedObject.typeDescription.name) + "," + managedObject.references.Length + "," + managedObject.referencedBy.Length + "," + managedObject.address);
+                        }
+                        for (int i = 0; i < _unpackedCrawl.nativeObjects.Length; i++)
+                        {
+                            NativeUnityEngineObject nativeObject = _unpackedCrawl.nativeObjects[i];
+                            sw.WriteLine("Native," + nativeObject.size + "," + CleanStrings(nativeObject.caption) + "," + CleanStrings(nativeObject.className) + "," + nativeObject.references.Length + "," + nativeObject.referencedBy.Length + "," + nativeObject.instanceID);
                         }
                         sw.Flush();
                         sw.Close();
@@ -459,8 +449,14 @@ namespace UnityEditor.MemoryProfiler2
             }
         }
 
-	}
+        public string CleanStrings(string text)
+        {
+            return text.Replace(",", " ");
+        }
 
+    }
+
+    
 
     public class NativeUnityEngineObjectComparer : System.Collections.Generic.IComparer<NativeUnityEngineObject>
     {

@@ -23,7 +23,7 @@ public static class PackedMemorySnapshotUtility
 
     public static void SaveToFile(PackedMemorySnapshot snapshot)
     {
-        var filePath = EditorUtility.SaveFilePanel("Save Snapshot", previousDirectory, "MemorySnapshot", "memsnap3");
+        var filePath = EditorUtility.SaveFilePanel("Save Snapshot", previousDirectory, "MemorySnapshot (" + DateTime.Now.ToString("dd-MM-yyyy hh-mm-ss") + ")", "memsnap3");
         if(string.IsNullOrEmpty(filePath))
             return;
 
@@ -196,10 +196,8 @@ public static class PackedMemorySnapshotUtility
                     return;
                 }
             }
-#if UNITY_2017_OR_NEWER
+
             UnityEngine.Debug.unityLogger.Log(logTypeFromTraceLevel[(int) level], message);
-#else
-#endif
             if (null != ex) {
                 UnityEngine.Debug.LogException(ex);
             }
